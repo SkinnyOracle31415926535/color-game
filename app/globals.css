@@ -1,0 +1,3 @@
+* { box-sizing: border-box; }
+html, body, main, iframe { width: 100%; min-height: 100%; margin: 0; border: 0; }
+iframe { display: block; min-height: 100vh; }

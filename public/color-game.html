@@ -1,0 +1,1839 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no">
+  <link rel="apple-touch-icon" href="icons/color-game-icon.png">
+  <link rel="icon" type="image/png" href="icons/color-game-icon.png">
+  <script>
+    (() => {
+      const stopZoom = (event) => event.preventDefault();
+      document.addEventListener('gesturestart', stopZoom, { passive: false });
+      document.addEventListener('gesturechange', stopZoom, { passive: false });
+      document.addEventListener('gestureend', stopZoom, { passive: false });
+      document.addEventListener('dblclick', stopZoom, { passive: false });
+      document.addEventListener('touchmove', (event) => {
+        if (event.touches.length > 1) event.preventDefault();
+      }, { passive: false });
+      document.addEventListener('wheel', (event) => {
+        if (event.ctrlKey || event.metaKey) event.preventDefault();
+      }, { passive: false });
+      document.addEventListener('keydown', (event) => {
+        if ((event.ctrlKey || event.metaKey) && ['+', '-', '=', '0'].includes(event.key)) event.preventDefault();
+      });
+    })();
+  </script>
+  <title>Color Game</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    :root {
+      --ink: #000033;
+      --paper: #ffffcc;
+      --panel: #00cc66;
+      --line: #000000;
+      --shadow: rgba(0, 0, 0, 0.26);
+      --green: #00b050;
+      --blue: #0033ff;
+      --pink: #ff00cc;
+      --yellow: #ffff00;
+      --orange: #ff6600;
+      --purple: #6600cc;
+      --mint: #00ffff;
+      --red: #ff3300;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+    }
+
+    body {
+      margin: 0;
+      padding: 8px 8px 28px;
+      color: var(--ink);
+      font-family: "Comic Sans MS", "Trebuchet MS", Arial, sans-serif;
+      background:
+        radial-gradient(circle at 12% 10%, #ffffff 0 2px, transparent 3px),
+        radial-gradient(circle at 72% 18%, #ffff00 0 3px, transparent 4px),
+        radial-gradient(circle at 38% 78%, #ff00cc 0 2px, transparent 3px),
+        repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.22) 0 2px, transparent 2px 12px),
+        repeating-linear-gradient(90deg, #0033ff 0 18px, #00cc66 18px 36px, #6600cc 36px 54px, #ff00cc 54px 72px);
+      background-size: 92px 92px, 116px 116px, 76px 76px, 18px 18px, auto;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.08) 0,
+        rgba(255, 255, 255, 0.08) 1px,
+        transparent 1px,
+        transparent 5px
+      );
+      opacity: 0.38;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      min-height: 46px;
+      padding: 8px 10px;
+      color: #000066;
+      background:
+        repeating-linear-gradient(0deg, #ffdf24 0 3px, #ffc400 3px 7px),
+        #ffcc00;
+      border-top: 4px solid #ffffff;
+      border-left: 4px solid #ffffff;
+      border-right: 4px solid #663300;
+      border-bottom: 4px solid #663300;
+      border-radius: 0;
+      box-shadow:
+        inset 2px 2px 0 rgba(255, 255, 255, 0.62),
+        inset -2px -2px 0 rgba(255, 102, 0, 0.34),
+        3px 3px 0 var(--shadow);
+      font-family: "Courier New", Courier, monospace;
+      font-size: 14px;
+      font-weight: 800;
+      text-decoration: underline;
+      text-shadow: 1px 1px 0 #ffffff;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    button:active {
+      transform: translate(2px, 2px);
+      border-top-color: #555555;
+      border-left-color: #555555;
+      border-right-color: #ffffff;
+      border-bottom-color: #ffffff;
+      box-shadow: none;
+    }
+
+    button:hover:not(:disabled) {
+      filter: saturate(1.15) brightness(1.06);
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      min-height: 38px;
+      padding: 7px 8px;
+      color: var(--ink);
+      background: var(--paper);
+      border-top: 4px solid #330066;
+      border-left: 4px solid #330066;
+      border-right: 3px solid #ffffff;
+      border-bottom: 3px solid #ffffff;
+      border-radius: 0;
+      font-family: "Courier New", Courier, monospace;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 128px;
+      overflow: hidden;
+      resize: none;
+      line-height: 1.35;
+    }
+
+    label {
+      display: block;
+      margin: 8px 0 4px;
+      color: #000066;
+      font-family: "Courier New", Courier, monospace;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      text-shadow: 1px 1px 0 #ffff99;
+    }
+
+    .app {
+      width: min(1040px, 100%);
+      min-height: calc(100vh - 20px);
+      margin: 0 auto;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      background:
+        radial-gradient(circle at 18% 16%, rgba(255, 255, 255, 0.7) 0 2px, transparent 3px),
+        radial-gradient(circle at 76% 68%, rgba(255, 255, 0, 0.75) 0 2px, transparent 3px),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.28) 0 7%, transparent 7% 45%, rgba(0, 255, 255, 0.2) 45% 52%, transparent 52%),
+        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.24) 0 2px, transparent 2px 18px),
+        repeating-linear-gradient(90deg, rgba(255, 0, 204, 0.18) 0 2px, transparent 2px 18px),
+        var(--panel);
+      background-size: 78px 78px, 112px 112px, 145px 145px, auto, auto, auto;
+      border: 5px ridge var(--yellow);
+      box-shadow:
+        0 0 0 4px #000000,
+        10px 10px 0 rgba(0, 0, 0, 0.48);
+    }
+
+    .titlebar {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 22px 10px 12px;
+      color: var(--yellow);
+      background:
+        repeating-linear-gradient(90deg, #000080 0 16px, #330066 16px 32px, #990099 32px 48px),
+        #330066;
+      border: 4px ridge var(--mint);
+      border-bottom-width: 5px;
+      font-family: "Comic Sans MS", "Courier New", cursive;
+      font-size: clamp(24px, 6vw, 46px);
+      font-weight: 900;
+      line-height: 0.95;
+      text-transform: uppercase;
+      text-shadow:
+        1px 1px 0 #ffffff,
+        2px 2px 0 var(--pink),
+        3px 3px 0 var(--blue),
+        4px 4px 0 #000000;
+    }
+
+    .titlebar::before {
+      content: "";
+      position: absolute;
+      inset: 4px 4px auto;
+      height: 12px;
+      background:
+        repeating-linear-gradient(90deg, #ffffff 0 6px, var(--mint) 6px 12px, var(--pink) 12px 18px, var(--yellow) 18px 24px);
+      background-size: 48px 100%;
+      border: 1px solid #000000;
+      animation: webStripe 1.1s linear infinite;
+    }
+
+    .window-buttons {
+      display: flex;
+      gap: 5px;
+      flex: 0 0 auto;
+    }
+
+    .window-button {
+      width: 17px;
+      height: 17px;
+      background: #c0c0c0;
+      border-top: 2px solid #ffffff;
+      border-left: 2px solid #ffffff;
+      border-right: 2px solid #666666;
+      border-bottom: 2px solid #666666;
+      animation: windowPulse 1.2s steps(2, end) infinite;
+    }
+
+    .window-button:nth-child(1) {
+      background: #ff00cc;
+    }
+
+    .window-button:nth-child(2) {
+      background: #ffff00;
+      animation-delay: 0.4s;
+    }
+
+    .window-button:nth-child(3) {
+      background: #00ffff;
+      animation-delay: 0.8s;
+    }
+
+    .web-strip {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      padding: 7px;
+      color: #000000;
+      background: #ffff99;
+      border-bottom: 5px ridge var(--pink);
+      font-family: "Courier New", Courier, monospace;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .marquee-box {
+      min-width: 0;
+      padding: 4px 8px;
+      color: var(--mint);
+      background: #000000;
+      border: 3px inset var(--mint);
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .marquee-text {
+      display: inline-block;
+      min-width: 100%;
+      animation: marquee 13s linear infinite;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 5px;
+    }
+
+    .web-badge,
+    .hit-counter,
+    .sound-toggle {
+      display: inline-grid;
+      place-items: center;
+      min-height: 25px;
+      padding: 3px 6px;
+      color: #ffffff;
+      background: #000080;
+      border: 3px ridge var(--mint);
+      font-family: "Courier New", Courier, monospace;
+      font-size: 11px;
+      font-weight: 900;
+      text-shadow: 1px 1px 0 #000000;
+    }
+
+    .hit-counter {
+      color: var(--yellow);
+      background: #000000;
+      letter-spacing: 1px;
+    }
+
+    .sound-toggle {
+      min-height: 25px;
+      color: var(--yellow);
+      background: #000000;
+      font-size: 11px;
+      text-decoration: none;
+      text-shadow: 1px 1px 0 #000000;
+    }
+
+    .blink {
+      animation: blink 900ms steps(2, end) infinite;
+    }
+
+    .title-flash {
+      display: inline-block;
+      color: transparent !important;
+      background:
+        repeating-linear-gradient(90deg, #ffff00 0 4px, #fff7a6 4px 8px, #00ffff 8px 10px, #ff00cc 10px 12px);
+      -webkit-background-clip: text;
+      background-clip: text;
+      background-size: 48px 100%;
+      -webkit-text-stroke: 1px #ffffff;
+      animation:
+        titleFlash 760ms steps(2, end) infinite,
+        headingTexture 900ms linear infinite;
+    }
+
+    .workspace {
+      display: block;
+      padding: 10px;
+    }
+
+    .screen {
+      display: none;
+    }
+
+    .screen.active {
+      display: grid;
+      gap: 10px;
+    }
+
+    .panel {
+      background: #ccffff;
+      border: 5px ridge var(--yellow);
+      padding: 9px;
+      box-shadow:
+        inset 4px 4px 0 rgba(255, 255, 255, 0.7),
+        inset -5px -5px 0 rgba(0, 102, 204, 0.15),
+        5px 5px 0 rgba(0, 0, 0, 0.24);
+    }
+
+    .panel-title {
+      margin: -4px -4px 8px;
+      padding: 5px 7px;
+      color: var(--yellow);
+      background:
+        repeating-linear-gradient(90deg, #000080 0 12px, #330066 12px 24px),
+        #000080;
+      background-size: 48px 100%;
+      border: 3px ridge var(--mint);
+      font-family: "Courier New", Courier, monospace;
+      font-size: 13px;
+      font-weight: 900;
+      text-shadow: 1px 1px 0 #000000;
+      text-transform: uppercase;
+      animation: webStripe 1.5s linear infinite;
+    }
+
+    .main-stage {
+      display: grid;
+      grid-template-rows: auto auto auto;
+      gap: 10px;
+    }
+
+    .prompt {
+      display: grid;
+      grid-template-columns: 178px 1fr;
+      min-height: 316px;
+      background: var(--paper);
+      border: 6px ridge var(--mint);
+      box-shadow:
+        inset 0 0 0 5px rgba(255, 255, 255, 0.45),
+        inset -8px -8px 0 rgba(0, 51, 255, 0.12),
+        6px 6px 0 rgba(0, 0, 0, 0.35);
+      overflow: hidden;
+    }
+
+    .color-swatch {
+      display: grid;
+      place-items: center;
+      position: relative;
+      isolation: isolate;
+      padding: 12px;
+      color: #ffffff;
+      background: var(--blue);
+      border-right: 5px ridge var(--yellow);
+      text-align: center;
+      text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.7);
+      box-shadow:
+        inset 7px 7px 0 rgba(255, 255, 255, 0.28),
+        inset -9px -9px 0 rgba(0, 0, 0, 0.2);
+      transition: background 120ms steps(3, end), color 120ms steps(3, end);
+    }
+
+    .color-name {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      padding: 8px;
+      background: rgba(0, 0, 0, 0.2);
+      border: 4px ridge rgba(255, 255, 255, 0.82);
+      font-family: "Arial Black", Impact, "Comic Sans MS", sans-serif;
+      font-size: clamp(26px, 3vw, 40px);
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      overflow: hidden;
+      white-space: nowrap;
+      text-transform: uppercase;
+      text-shadow:
+        1px 1px 0 #ffffff,
+        3px 3px 0 #00ffff,
+        5px 5px 0 #6600cc,
+        7px 7px 0 rgba(0, 0, 0, 0.3);
+    }
+
+    .position-card {
+      display: grid;
+      align-content: center;
+      position: relative;
+      overflow: hidden;
+      gap: 12px;
+      padding: 18px;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.75), transparent 35%),
+        linear-gradient(90deg, rgba(255, 0, 204, 0.11) 0 2px, transparent 2px 20px),
+        linear-gradient(0deg, rgba(0, 51, 255, 0.11) 0 2px, transparent 2px 20px),
+        #ffffcc;
+      text-align: center;
+    }
+
+    .position-card::after {
+      content: "";
+      position: absolute;
+      inset: -35% 0 auto;
+      height: 34%;
+      background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.46), transparent);
+      pointer-events: none;
+      animation: panelScan 3.2s linear infinite;
+    }
+
+    .position-label {
+      position: relative;
+      z-index: 1;
+      color: #0000ee;
+      font-family: "Courier New", Courier, monospace;
+      font-size: 12px;
+      font-weight: 900;
+      text-decoration: underline;
+      text-transform: uppercase;
+    }
+
+    .position-name {
+      position: relative;
+      z-index: 1;
+      color: #000033;
+      font-family: "Arial Black", Impact, "Comic Sans MS", sans-serif;
+      font-size: clamp(48px, 9vw, 96px);
+      font-weight: 900;
+      line-height: 0.96;
+      overflow-wrap: anywhere;
+      text-shadow:
+        2px 2px 0 #ffffff,
+        4px 4px 0 var(--pink),
+        6px 6px 0 var(--mint),
+        8px 8px 0 rgba(0, 0, 0, 0.28);
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .main-controls {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .roll {
+      display: grid;
+      place-items: center;
+      grid-column: 1 / -1;
+      min-height: 92px;
+      background:
+        repeating-linear-gradient(135deg, #ff00cc 0 20px, #00ffff 20px 40px, #ffff00 40px 60px),
+        #00ffff;
+      border-color: #ffffff #6600cc #6600cc #ffffff;
+      border-width: 6px;
+      outline: 3px solid #000000;
+      outline-offset: 3px;
+      font-family: "Comic Sans MS", "Trebuchet MS", Arial, sans-serif;
+      font-size: clamp(42px, 10vw, 82px);
+      letter-spacing: 0.04em;
+      text-decoration: none;
+      animation: rollFlash 680ms steps(2, end) infinite;
+    }
+
+    .roll-label {
+      display: inline-block;
+      padding: 0 0.22em 0.08em;
+      color: #ff00cc;
+      background: #ffffcc;
+      border: 5px solid #6600cc;
+      font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+      font-weight: 900;
+      box-shadow:
+        5px 5px 0 #00ffff,
+        8px 8px 0 #000000;
+      line-height: 0.95;
+      text-decoration: none;
+      -webkit-text-stroke: 2px #6600cc;
+      paint-order: stroke fill;
+      text-shadow:
+        2px 2px 0 #ffffff,
+        4px 4px 0 #00ffff,
+        0 0 8px #ffffff;
+      animation:
+        rollLabelShake 360ms steps(2, end) infinite,
+        rollLabelFlash 680ms steps(2, end) infinite;
+    }
+
+    .roll:disabled {
+      cursor: wait;
+      filter: saturate(1.7) brightness(1.08);
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .settings-grid.single {
+      grid-template-columns: 1fr;
+    }
+
+    .list-actions {
+      margin-top: 8px;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 38px;
+      padding: 6px;
+      background: #ffffcc;
+      border: 4px inset #c0c0c0;
+      font-family: "Courier New", Courier, monospace;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .checkbox-row input {
+      width: 20px;
+      height: 20px;
+      min-height: 0;
+      padding: 0;
+      accent-color: var(--green);
+    }
+
+    .editors {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .color-tools {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 62px auto;
+      gap: 6px;
+      margin: 8px 0;
+    }
+
+    .color-tools input[type="color"] {
+      min-height: 38px;
+      padding: 3px;
+      cursor: pointer;
+    }
+
+    .color-visibility {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
+      gap: 6px;
+      padding: 7px;
+      background: #ffffcc;
+      border: 4px inset #c0c0c0;
+    }
+
+    .color-option {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      padding: 5px;
+      border: 2px solid #000033;
+      background: #ffffff;
+      color: #000033;
+      font-family: "Courier New", Courier, monospace;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .color-option input {
+      width: 17px;
+      min-height: 17px;
+      margin: 0;
+      padding: 0;
+      accent-color: var(--green);
+    }
+
+    .color-dot {
+      width: 15px;
+      height: 15px;
+      flex: 0 0 auto;
+      border: 2px solid #000000;
+    }
+
+    .scoreboard {
+      padding: 8px;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.8), transparent 28%),
+        repeating-linear-gradient(90deg, rgba(255, 0, 204, 0.1) 0 2px, transparent 2px 16px),
+        #ccffff;
+      background-size: auto, 48px 100%, auto;
+      border: 5px ridge var(--mint);
+      animation: scoreTexture 3.6s linear infinite;
+    }
+
+    .scoreboard-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 7px;
+      color: #6600cc;
+      font-family: "Courier New", Courier, monospace;
+      font-size: 14px;
+      font-weight: 900;
+      text-shadow: 1px 1px 0 #ffff00;
+    }
+
+    .add-player {
+      min-height: 31px;
+      padding: 4px 7px;
+      font-size: 12px;
+    }
+
+    .score-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 7px;
+    }
+
+    .score-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto auto;
+      align-items: center;
+      gap: 5px;
+      padding: 5px;
+      background: #ffffcc;
+      border: 3px ridge #ffffff;
+      box-shadow:
+        inset 2px 2px 0 rgba(255, 255, 255, 0.75),
+        inset -3px -3px 0 rgba(255, 0, 204, 0.12),
+        2px 2px 0 rgba(0, 0, 0, 0.2);
+    }
+
+    .score-card input {
+      min-height: 32px;
+      padding: 4px 6px;
+    }
+
+    .score-card button {
+      min-width: 33px;
+      min-height: 32px;
+      padding: 3px 6px;
+      font-size: 18px;
+      line-height: 1;
+      text-decoration: none;
+    }
+
+    .score-value {
+      min-width: 35px;
+      color: #000033;
+      font-family: "Arial Black", Impact, sans-serif;
+      font-size: 22px;
+      font-weight: 900;
+      text-align: center;
+    }
+
+    .status {
+      min-height: 26px;
+      padding: 5px 7px;
+      color: var(--mint);
+      background: #000000;
+      border: 4px inset var(--mint);
+      font-family: "Courier New", Courier, monospace;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+
+    .flash {
+      animation: flash 220ms steps(2, end) 2;
+    }
+
+    @keyframes flash {
+      0% {
+        filter: saturate(1);
+      }
+      100% {
+        filter: saturate(2.3) contrast(1.2);
+      }
+    }
+
+    @keyframes marquee {
+      0% {
+        transform: translateX(100%);
+      }
+      100% {
+        transform: translateX(-100%);
+      }
+    }
+
+    @keyframes blink {
+      0%,
+      49% {
+        opacity: 1;
+      }
+      50%,
+      100% {
+        opacity: 0;
+      }
+    }
+
+    @keyframes titleFlash {
+      0% {
+        color: #ffff00;
+        text-shadow:
+          1px 1px 0 #ffffff,
+          2px 2px 0 #ff00cc,
+          3px 3px 0 #0033ff,
+          5px 5px 0 #000000;
+      }
+      100% {
+        color: #00ffff;
+        text-shadow:
+          1px 1px 0 #ffffff,
+          2px 2px 0 #ff3300,
+          3px 3px 0 #ffff00,
+          5px 5px 0 #000000;
+      }
+    }
+
+    @keyframes headingTexture {
+      to {
+        background-position: 48px 0;
+      }
+    }
+
+    @keyframes webStripe {
+      to {
+        background-position: 48px 0;
+      }
+    }
+
+    @keyframes windowPulse {
+      0%,
+      100% {
+        filter: brightness(1);
+        transform: translateY(0);
+      }
+      50% {
+        filter: brightness(1.45);
+        transform: translateY(-1px);
+      }
+    }
+
+    @keyframes panelScan {
+      to {
+        transform: translateY(480%);
+      }
+    }
+
+    @keyframes scoreTexture {
+      to {
+        background-position: 0 0, 48px 0, 0 0;
+      }
+    }
+
+    @keyframes rollFlash {
+      0% {
+        background:
+          repeating-linear-gradient(135deg, #ff00cc 0 20px, #00ffff 20px 40px, #ffff00 40px 60px),
+          #00ffff;
+        box-shadow:
+          0 0 0 6px #000000,
+          0 0 0 13px #ffff00,
+          8px 8px 0 #000000,
+          13px 13px 0 #ff00cc,
+          0 0 24px #ff00cc;
+        filter: saturate(1.2);
+      }
+      100% {
+        background:
+          repeating-linear-gradient(45deg, #ffff00 0 20px, #00ffff 20px 40px, #ff00cc 40px 60px),
+          #ff00cc;
+        box-shadow:
+          0 0 0 6px #000000,
+          0 0 0 13px #00ffff,
+          8px 8px 0 #000000,
+          13px 13px 0 #ffff00,
+          0 0 24px #ffff00;
+        filter: saturate(1.7) contrast(1.12);
+      }
+    }
+
+    @keyframes rollLabelShake {
+      0% {
+        transform: translate(-2px, 0) rotate(-1deg);
+      }
+      33% {
+        transform: translate(3px, -2px) rotate(1deg);
+      }
+      66% {
+        transform: translate(-1px, 2px) rotate(-1deg);
+      }
+      100% {
+        transform: translate(2px, 0) rotate(1deg);
+      }
+    }
+
+    @keyframes rollLabelFlash {
+      0% {
+        color: #ff00cc;
+        background: #ffffcc;
+        box-shadow:
+          6px 6px 0 #00ffff,
+          10px 10px 0 #000000;
+      }
+      100% {
+        color: #6600cc;
+        background: #ffff00;
+        box-shadow:
+          6px 6px 0 #ff00cc,
+          10px 10px 0 #000000;
+      }
+    }
+
+    @media (max-width: 840px) {
+      .workspace {
+        display: block;
+      }
+
+      .prompt {
+        grid-template-columns: 1fr;
+      }
+
+      .color-swatch {
+        min-height: 132px;
+        border-right: 0;
+        border-bottom: 5px ridge var(--yellow);
+      }
+    }
+
+    @media (max-width: 620px) {
+      body {
+        padding: 5px;
+      }
+
+      .app {
+        min-height: calc(100vh - 10px);
+        box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.45);
+      }
+
+      .titlebar {
+        align-items: flex-end;
+      }
+
+      .web-strip {
+        grid-template-columns: 1fr;
+      }
+
+      .badge-row {
+        justify-content: start;
+      }
+
+      .workspace {
+        padding: 6px;
+      }
+
+      .prompt {
+        min-height: 0;
+      }
+
+      .position-card {
+        min-height: 260px;
+        padding: 12px;
+      }
+
+      .controls,
+      .settings-grid,
+      .editors {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .settings-grid.single {
+        grid-template-columns: 1fr;
+      }
+
+      .list-actions {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .color-tools {
+        grid-template-columns: minmax(0, 1fr) 58px;
+      }
+
+      .color-tools button {
+        grid-column: 1 / -1;
+      }
+
+      .roll {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .titlebar::before,
+      .title-flash,
+      .panel-title,
+      .window-button,
+      .position-card::after,
+      .scoreboard {
+        animation: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="titlebar">
+      <div><span class="title-flash">COLOR GAME</span></div>
+      <div class="window-buttons" aria-hidden="true">
+        <span class="window-button"></span>
+        <span class="window-button"></span>
+        <span class="window-button"></span>
+      </div>
+    </header>
+
+    <section class="web-strip" aria-label="site banner">
+      <div class="marquee-box">
+        <span class="marquee-text">*** Welcome to COLOR GAME *** Random color + random shape *** Best viewed after warmup ***</span>
+      </div>
+      <div class="badge-row" aria-hidden="true">
+        <span class="web-badge">GYM WEB</span>
+        <span class="web-badge">NO FRAMES</span>
+        <button id="soundButton" class="sound-toggle" type="button" aria-pressed="true">SOUND: ON</button>
+        <span class="hit-counter">000042</span>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <section class="screen active" id="gameScreen">
+        <div class="main-stage">
+          <section class="prompt" id="prompt">
+            <div class="color-swatch" id="colorSwatch">
+              <div class="color-name" id="colorName">BLUE</div>
+            </div>
+            <div class="position-card">
+              <div class="position-label">Position</div>
+              <div class="position-name" id="positionName">Hollow Hold</div>
+            </div>
+          </section>
+
+          <section class="controls main-controls" aria-label="game controls">
+            <button class="roll" id="rollButton" type="button"><span class="roll-label">ROLL</span></button>
+            <button id="openSettingsButton" type="button">SETTINGS</button>
+            <button id="openListsButton" type="button">CUSTOM LISTS</button>
+          </section>
+
+          <section class="scoreboard" aria-label="Points">
+            <div class="scoreboard-header">
+              <span>POINTS</span>
+              <button class="add-player" id="addPlayerButton" type="button">+ PLAYER</button>
+            </div>
+            <div class="score-list" id="scoreList"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="screen" id="settingsScreen">
+        <section class="panel">
+          <div class="panel-title">Settings</div>
+          <div class="settings-grid single">
+            <div>
+              <label for="difficulty">Position Range</label>
+              <select id="difficulty">
+                <option value="all">All positions</option>
+                <option value="basic">Basic shapes</option>
+                <option value="strength">Strength shapes</option>
+                <option value="balance">Balance and control</option>
+              </select>
+            </div>
+          </div>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="avoidRepeats" checked>
+            Avoid immediate repeats
+          </label>
+
+          <div class="controls" style="margin-top: 8px;">
+            <button class="backButton" type="button">BACK TO GAME</button>
+          </div>
+        </section>
+      </section>
+
+      <section class="screen" id="listsScreen">
+        <section class="panel">
+          <div class="panel-title">Customize Lists</div>
+          <div class="settings-grid">
+            <div>
+              <label for="listNameInput">List Name</label>
+              <input id="listNameInput" type="text" autocomplete="off" placeholder="Warmup shapes">
+            </div>
+            <div>
+              <label for="savedListSelect">Saved Lists</label>
+              <select id="savedListSelect">
+                <option value="">No saved lists</option>
+              </select>
+            </div>
+          </div>
+          <div class="editors">
+            <div>
+              <label for="positionInput">Positions</label>
+              <textarea id="positionInput" spellcheck="false"></textarea>
+            </div>
+            <div>
+              <label for="newColorName">Make a color</label>
+              <div class="color-tools" aria-label="Add a new color">
+                <input id="newColorName" type="text" autocomplete="off" placeholder="New color name">
+                <input id="newColorHex" type="color" value="#1764d8" aria-label="New color shade">
+                <button id="addColorButton" type="button">ADD COLOR</button>
+              </div>
+              <label>Show colors</label>
+              <div class="color-visibility" id="colorVisibility" aria-label="Show or hide colors"></div>
+            </div>
+          </div>
+          <textarea id="colorInput" hidden aria-hidden="true"></textarea>
+          <div class="controls list-actions">
+            <button id="saveListsButton" type="button">SAVE AS LIST</button>
+            <button id="loadListButton" type="button">LOAD</button>
+            <button id="deleteListButton" type="button">DELETE</button>
+            <button id="defaultsButton" type="button">DEFAULTS</button>
+            <button class="backButton" type="button">BACK TO GAME</button>
+          </div>
+        </section>
+      </section>
+
+      <div class="status" id="status">Ready.</div>
+    </section>
+  </main>
+
+  <script>
+    const defaultColors = [
+      { name: "Red", hex: "#f34a3d", text: "#ffffff" },
+      { name: "Orange", hex: "#ff8a34", text: "#101116" },
+      { name: "Yellow", hex: "#ffe45c", text: "#101116" },
+      { name: "Green", hex: "#0e8f60", text: "#ffffff" },
+      { name: "Blue", hex: "#1764d8", text: "#ffffff" },
+      { name: "Purple", hex: "#6949d8", text: "#ffffff" },
+      { name: "Pink", hex: "#ff4aa6", text: "#101116" },
+      { name: "White", hex: "#fffdf2", text: "#101116" },
+      { name: "Black", hex: "#101116", text: "#ffffff" },
+      { name: "Teal", hex: "#18c9be", text: "#101116" }
+    ];
+
+    const defaultPositions = [
+      { name: "Hollow Hold", tags: ["basic", "strength"] },
+      { name: "Arch Hold", tags: ["basic", "strength"] },
+      { name: "Front Tuck Flip Position", tags: ["basic", "strength"] },
+      { name: "Pike Sit", tags: ["basic", "strength"] },
+      { name: "Straddle Sit", tags: ["basic"] },
+      { name: "Stick", tags: ["basic", "balance"] },
+      { name: "Lunge", tags: ["basic", "balance"] },
+      { name: "Releve Hold", tags: ["balance"] },
+      { name: "Arabesque", tags: ["balance"] },
+      { name: "Front Support", tags: ["strength"] },
+      { name: "Push-Up Shape", tags: ["strength"] },
+      { name: "Candlestick", tags: ["basic", "strength"] },
+      { name: "V-Sit Shape", tags: ["strength"] },
+      { name: "Bridge Shape", tags: ["strength"] },
+      { name: "Left Leg Split", tags: ["basic"] },
+      { name: "Right Leg Split", tags: ["basic"] },
+      { name: "Middle Split", tags: ["basic"] },
+      { name: "Tucked Planche", tags: ["strength"] },
+      { name: "L-Sit", tags: ["strength"] }
+    ];
+
+    const colorSwatch = document.getElementById("colorSwatch");
+    const colorName = document.getElementById("colorName");
+    const positionName = document.getElementById("positionName");
+    const prompt = document.getElementById("prompt");
+    const gameScreen = document.getElementById("gameScreen");
+    const settingsScreen = document.getElementById("settingsScreen");
+    const listsScreen = document.getElementById("listsScreen");
+    const difficulty = document.getElementById("difficulty");
+    const avoidRepeats = document.getElementById("avoidRepeats");
+    const colorInput = document.getElementById("colorInput");
+    const newColorName = document.getElementById("newColorName");
+    const newColorHex = document.getElementById("newColorHex");
+    const colorVisibility = document.getElementById("colorVisibility");
+    const positionInput = document.getElementById("positionInput");
+    const listNameInput = document.getElementById("listNameInput");
+    const savedListSelect = document.getElementById("savedListSelect");
+    const status = document.getElementById("status");
+    const soundButton = document.getElementById("soundButton");
+    const rollButton = document.getElementById("rollButton");
+    const rollLabel = rollButton.querySelector(".roll-label");
+    const scoreList = document.getElementById("scoreList");
+    const namedListsStorageKey = "colorPositionNamedLists";
+    const soundStorageKey = "colorPositionSound";
+    const hiddenColorsStorageKey = "colorPositionHiddenColors";
+    const scoresStorageKey = "colorPositionScores";
+    const soundEffects = {
+      click: [{ frequency: 520, duration: 0.045, type: "square", gain: 0.024 }],
+      roll: [
+        { frequency: 330, duration: 0.05, type: "square", gain: 0.03 },
+        { frequency: 495, delay: 0.045, duration: 0.055, type: "square", gain: 0.032 },
+        { frequency: 740, delay: 0.095, duration: 0.09, type: "triangle", gain: 0.032 }
+      ],
+      tick: [{ frequency: 460, duration: 0.035, type: "square", gain: 0.018 }],
+      done: [
+        { frequency: 523, duration: 0.08, type: "triangle", gain: 0.035 },
+        { frequency: 659, delay: 0.07, duration: 0.1, type: "triangle", gain: 0.04 },
+        { frequency: 784, delay: 0.15, duration: 0.16, type: "sine", gain: 0.045 },
+        { frequency: 1047, delay: 0.15, duration: 0.22, type: "sine", gain: 0.025 }
+      ],
+      open: [
+        { frequency: 392, duration: 0.045, type: "triangle", gain: 0.026 },
+        { frequency: 587, delay: 0.045, duration: 0.07, type: "triangle", gain: 0.028 }
+      ],
+      back: [
+        { frequency: 420, duration: 0.04, type: "triangle", gain: 0.024 },
+        { frequency: 280, delay: 0.045, duration: 0.07, type: "triangle", gain: 0.024 }
+      ],
+      save: [
+        { frequency: 523, duration: 0.055, type: "triangle", gain: 0.028 },
+        { frequency: 784, delay: 0.06, duration: 0.1, type: "triangle", gain: 0.03 }
+      ],
+      load: [
+        { frequency: 440, duration: 0.045, type: "triangle", gain: 0.027 },
+        { frequency: 660, delay: 0.045, duration: 0.08, type: "triangle", gain: 0.029 }
+      ],
+      remove: [
+        { frequency: 340, duration: 0.055, type: "sawtooth", gain: 0.023 },
+        { frequency: 210, delay: 0.055, duration: 0.1, type: "triangle", gain: 0.024 }
+      ],
+      reset: [
+        { frequency: 760, duration: 0.045, type: "square", gain: 0.025 },
+        { frequency: 380, delay: 0.05, duration: 0.09, type: "triangle", gain: 0.027 }
+      ],
+      error: [
+        { frequency: 180, duration: 0.08, type: "sawtooth", gain: 0.025 },
+        { frequency: 130, delay: 0.08, duration: 0.1, type: "sawtooth", gain: 0.023 }
+      ],
+      modeOn: [
+        { frequency: 440, duration: 0.055, type: "square", gain: 0.026 },
+        { frequency: 660, delay: 0.055, duration: 0.08, type: "triangle", gain: 0.03 }
+      ],
+      modeOff: [
+        { frequency: 360, duration: 0.055, type: "square", gain: 0.024 },
+        { frequency: 220, delay: 0.055, duration: 0.08, type: "triangle", gain: 0.024 }
+      ]
+    };
+    const soundThrottleMs = {
+      click: 45
+    };
+    const soundMasterGain = 2.6;
+
+    let colors = [...defaultColors];
+    let positions = [...defaultPositions];
+    let hiddenColorNames = new Set();
+    let players = loadPlayers();
+    let isRolling = false;
+    let currentColor = colors[4];
+    let currentPosition = positions[0];
+    let soundEnabled = loadSoundPreference();
+    let audioContext = null;
+    let audioUnlocked = false;
+    let lastAnySoundAt = 0;
+    const lastSoundTimes = {};
+
+    function randomItem(items, current) {
+      if (!items.length) {
+        return null;
+      }
+
+      if (!avoidRepeats.checked || items.length === 1) {
+        return items[Math.floor(Math.random() * items.length)];
+      }
+
+      const filtered = items.filter((item) => item.name !== current?.name);
+      return filtered[Math.floor(Math.random() * filtered.length)];
+    }
+
+    function filteredPositions() {
+      const mode = difficulty.value;
+      if (mode === "all") {
+        return positions;
+      }
+
+      return positions.filter((position) => position.tags.includes(mode));
+    }
+
+    function visibleColors() {
+      return colors.filter((color) => !hiddenColorNames.has(color.name.toLowerCase()));
+    }
+
+    function renderPrompt() {
+      colorName.textContent = currentColor.name.toUpperCase();
+      colorSwatch.style.background = currentColor.hex;
+      colorSwatch.style.color = currentColor.text;
+      fitColorName();
+      positionName.textContent = currentPosition.name;
+      prompt.classList.remove("flash");
+      window.requestAnimationFrame(() => prompt.classList.add("flash"));
+    }
+
+    function fitColorName() {
+      colorName.style.fontSize = "";
+      let fontSize = parseFloat(window.getComputedStyle(colorName).fontSize);
+      while (colorName.scrollWidth > colorName.clientWidth && fontSize > 16) {
+        fontSize -= 1;
+        colorName.style.fontSize = `${fontSize}px`;
+      }
+    }
+
+    function rollPosition() {
+      const pool = filteredPositions();
+      currentPosition = randomItem(pool, currentPosition) || currentPosition;
+      renderPrompt();
+      setStatus("Position changed.");
+      playSound("roll");
+    }
+
+    function rollAll() {
+      if (isRolling) {
+        return;
+      }
+
+      const colorPool = visibleColors();
+      const positionPool = filteredPositions();
+      const finalColor = randomItem(colorPool, currentColor) || currentColor;
+      const finalPosition = randomItem(positionPool, currentPosition) || currentPosition;
+      const totalSteps = 12;
+      let step = 0;
+      isRolling = true;
+      rollButton.disabled = true;
+      rollLabel.textContent = "ROLLING";
+      setStatus("Rolling...");
+
+      function spin() {
+        const isFinalStep = step === totalSteps - 1;
+        currentColor = isFinalStep ? finalColor : randomItem(colorPool, currentColor) || currentColor;
+        currentPosition = isFinalStep ? finalPosition : randomItem(positionPool, currentPosition) || currentPosition;
+        renderPrompt();
+
+        if (isFinalStep) {
+          isRolling = false;
+          rollButton.disabled = false;
+          rollLabel.textContent = "ROLL";
+          setStatus("New prompt ready!");
+          playSound("done");
+          return;
+        }
+
+        playSound("tick");
+        step += 1;
+        const delay = 45 + (step * step * 2);
+        window.setTimeout(spin, delay);
+      }
+
+      spin();
+    }
+
+    function setStatus(message) {
+      status.textContent = message;
+    }
+
+    function showScreen(screen) {
+      [gameScreen, settingsScreen, listsScreen].forEach((item) => {
+        item.classList.toggle("active", item === screen);
+      });
+      if (screen === listsScreen) {
+        window.requestAnimationFrame(resizePositionInput);
+      }
+    }
+
+    function parseColors(text) {
+      return text
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line, index) => {
+          const [namePart, hexPart] = line.split(":").map((part) => part.trim());
+          const fallback = defaultColors[index % defaultColors.length];
+          const hex = /^#[0-9a-f]{6}$/i.test(hexPart) ? hexPart : fallback.hex;
+          const textColor = ["#ffe45c", "#fffdf2", "#ff8a34", "#ff4aa6", "#18c9be"].includes(hex.toLowerCase()) ? "#101116" : "#ffffff";
+          return {
+            name: namePart || fallback.name,
+            hex,
+            text: textColor
+          };
+        });
+    }
+
+    function colorLines() {
+      return colors.map((color) => `${color.name}: ${color.hex}`).join("\n");
+    }
+
+    function persistHiddenColors() {
+      localStorage.setItem(hiddenColorsStorageKey, JSON.stringify([...hiddenColorNames]));
+    }
+
+    function renderColorVisibility() {
+      colorVisibility.innerHTML = "";
+      const currentNames = new Set(colors.map((color) => color.name.toLowerCase()));
+      hiddenColorNames = new Set([...hiddenColorNames].filter((name) => currentNames.has(name)));
+
+      colors.forEach((color) => {
+        const key = color.name.toLowerCase();
+        const option = document.createElement("label");
+        option.className = "color-option";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = !hiddenColorNames.has(key);
+        checkbox.setAttribute("aria-label", `Show ${color.name}`);
+        checkbox.addEventListener("change", () => {
+          if (!checkbox.checked && visibleColors().length === 1) {
+            checkbox.checked = true;
+            setStatus("Keep at least one color visible.");
+            playSound("error");
+            return;
+          }
+          if (checkbox.checked) {
+            hiddenColorNames.delete(key);
+          } else {
+            hiddenColorNames.add(key);
+          }
+          persistHiddenColors();
+          setStatus(`${color.name} ${checkbox.checked ? "shown" : "hidden"}.`);
+          playSound("click");
+        });
+        const dot = document.createElement("span");
+        dot.className = "color-dot";
+        dot.style.background = color.hex;
+        const name = document.createElement("span");
+        name.textContent = color.name;
+        option.append(checkbox, dot, name);
+        colorVisibility.appendChild(option);
+      });
+    }
+
+    function addColor() {
+      const name = newColorName.value.trim();
+      const hex = newColorHex.value;
+      if (!name) {
+        setStatus("Name the new color first.");
+        playSound("error");
+        newColorName.focus();
+        return;
+      }
+      if (colors.some((color) => color.name.toLowerCase() === name.toLowerCase())) {
+        setStatus("That color name is already in the list.");
+        playSound("error");
+        return;
+      }
+      const text = ["#ffe45c", "#fffdf2", "#ff8a34", "#ff4aa6", "#18c9be"].includes(hex.toLowerCase()) ? "#101116" : "#ffffff";
+      colors.push({ name, hex, text });
+      colorInput.value = colorLines();
+      localStorage.setItem("colorPositionColors", colorInput.value);
+      renderColorVisibility();
+      newColorName.value = "";
+      setStatus(`Added ${name}.`);
+      playSound("save");
+    }
+
+    function parsePositions(text) {
+      return text
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => ({
+          name: line,
+          tags: ["basic", "strength", "balance"]
+        }));
+    }
+
+    function resizePositionInput() {
+      positionInput.style.height = "auto";
+      const borderHeight = positionInput.offsetHeight - positionInput.clientHeight;
+      positionInput.style.height = `${positionInput.scrollHeight + borderHeight}px`;
+    }
+
+    function saveLists(message = "Custom lists saved.") {
+      const parsedColors = parseColors(colorInput.value);
+      const parsedPositions = parsePositions(positionInput.value);
+
+      if (!parsedColors.length || !parsedPositions.length) {
+        setStatus("Keep at least one color and one position.");
+        playSound("error");
+        return false;
+      }
+
+      colors = parsedColors;
+      positions = parsedPositions;
+      resizePositionInput();
+      hiddenColorNames = new Set([...hiddenColorNames].filter((name) => colors.some((color) => color.name.toLowerCase() === name)));
+      currentColor = colors[0];
+      currentPosition = positions[0];
+      localStorage.setItem("colorPositionColors", colorInput.value);
+      localStorage.setItem("colorPositionPositions", positionInput.value);
+      persistHiddenColors();
+      renderColorVisibility();
+      renderPrompt();
+      setStatus(message);
+      playSound("save");
+      return true;
+    }
+
+    function readNamedLists() {
+      try {
+        return JSON.parse(localStorage.getItem(namedListsStorageKey)) || {};
+      } catch (error) {
+        return {};
+      }
+    }
+
+    function writeNamedLists(namedLists) {
+      localStorage.setItem(namedListsStorageKey, JSON.stringify(namedLists));
+    }
+
+    function renderSavedListSelect(selectedName = "") {
+      const namedLists = readNamedLists();
+      const names = Object.keys(namedLists).sort((a, b) => a.localeCompare(b));
+      savedListSelect.innerHTML = "";
+
+      const emptyOption = document.createElement("option");
+      emptyOption.value = "";
+      emptyOption.textContent = names.length ? "Choose saved list" : "No saved lists";
+      savedListSelect.appendChild(emptyOption);
+
+      names.forEach((name) => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        option.selected = name === selectedName;
+        savedListSelect.appendChild(option);
+      });
+    }
+
+    function saveNamedList() {
+      const name = listNameInput.value.trim();
+      if (!name) {
+        setStatus("Name the list first.");
+        playSound("error");
+        return;
+      }
+
+      if (!saveLists(`Saved list: ${name}.`)) {
+        return;
+      }
+
+      const namedLists = readNamedLists();
+      namedLists[name] = {
+        colors: colorInput.value,
+        positions: positionInput.value,
+        hiddenColors: [...hiddenColorNames]
+      };
+      writeNamedLists(namedLists);
+      renderSavedListSelect(name);
+    }
+
+    function loadNamedList() {
+      const name = savedListSelect.value || listNameInput.value.trim();
+      const namedLists = readNamedLists();
+      const list = namedLists[name];
+
+      if (!name || !list) {
+        setStatus("Choose a saved list first.");
+        playSound("error");
+        return;
+      }
+
+      listNameInput.value = name;
+      colorInput.value = list.colors;
+      positionInput.value = list.positions;
+      hiddenColorNames = new Set(list.hiddenColors || []);
+      saveLists(`Loaded list: ${name}.`);
+      renderSavedListSelect(name);
+      playSound("load");
+    }
+
+    function deleteNamedList() {
+      const name = savedListSelect.value || listNameInput.value.trim();
+      const namedLists = readNamedLists();
+
+      if (!name || !namedLists[name]) {
+        setStatus("Choose a saved list first.");
+        playSound("error");
+        return;
+      }
+
+      delete namedLists[name];
+      writeNamedLists(namedLists);
+      listNameInput.value = "";
+      renderSavedListSelect();
+      setStatus(`Deleted list: ${name}.`);
+      playSound("remove");
+    }
+
+    function loadLists() {
+      const savedColors = localStorage.getItem("colorPositionColors");
+      const savedPositions = localStorage.getItem("colorPositionPositions");
+      colorInput.value = savedColors || defaultColors.map((color) => `${color.name}: ${color.hex}`).join("\n");
+      positionInput.value = savedPositions || defaultPositions.map((position) => position.name).join("\n");
+
+      if (savedColors) {
+        colors = parseColors(savedColors);
+      }
+
+      try {
+        hiddenColorNames = new Set(JSON.parse(localStorage.getItem(hiddenColorsStorageKey)) || []);
+      } catch (error) {
+        hiddenColorNames = new Set();
+      }
+
+      if (savedPositions) {
+        positions = parsePositions(savedPositions);
+      }
+      resizePositionInput();
+    }
+
+    function resetDefaults() {
+      colors = [...defaultColors];
+      positions = [...defaultPositions];
+      colorInput.value = defaultColors.map((color) => `${color.name}: ${color.hex}`).join("\n");
+      positionInput.value = defaultPositions.map((position) => position.name).join("\n");
+      resizePositionInput();
+      localStorage.removeItem("colorPositionColors");
+      localStorage.removeItem("colorPositionPositions");
+      localStorage.removeItem(hiddenColorsStorageKey);
+      currentColor = colors[4];
+      currentPosition = positions[0];
+      hiddenColorNames = new Set();
+      renderPrompt();
+      renderColorVisibility();
+      setStatus("Default lists restored.");
+      playSound("reset");
+    }
+
+    function loadSoundPreference() {
+      try {
+        return localStorage.getItem(soundStorageKey) !== "off";
+      } catch (error) {
+        return true;
+      }
+    }
+
+    function saveSoundPreference() {
+      try {
+        localStorage.setItem(soundStorageKey, soundEnabled ? "on" : "off");
+      } catch (error) {
+        setStatus("Sound setting not saved.");
+      }
+    }
+
+    function syncSoundButton() {
+      soundButton.textContent = soundEnabled ? "SOUND: ON" : "SOUND: OFF";
+      soundButton.setAttribute("aria-pressed", String(soundEnabled));
+    }
+
+    function loadPlayers() {
+      try {
+        const savedPlayers = JSON.parse(localStorage.getItem(scoresStorageKey));
+        if (Array.isArray(savedPlayers) && savedPlayers.length) {
+          return savedPlayers.map((player, index) => ({
+            name: String(player.name || `Player ${index + 1}`),
+            points: Number.isFinite(Number(player.points)) ? Number(player.points) : 0
+          }));
+        }
+      } catch (error) {
+        // Use the starter player when saved score data cannot be read.
+      }
+      return [{ name: "Player 1", points: 0 }];
+    }
+
+    function savePlayers() {
+      localStorage.setItem(scoresStorageKey, JSON.stringify(players));
+    }
+
+    function renderScores() {
+      scoreList.innerHTML = "";
+      players.forEach((player, index) => {
+        const card = document.createElement("div");
+        card.className = "score-card";
+        const name = document.createElement("input");
+        name.type = "text";
+        name.value = player.name;
+        name.setAttribute("aria-label", `Player ${index + 1} name`);
+        name.addEventListener("change", () => {
+          players[index].name = name.value.trim() || `Player ${index + 1}`;
+          name.value = players[index].name;
+          savePlayers();
+        });
+        const minus = document.createElement("button");
+        minus.type = "button";
+        minus.textContent = "−";
+        minus.setAttribute("aria-label", `Remove a point from ${player.name}`);
+        minus.addEventListener("click", () => changeScore(index, -1));
+        const value = document.createElement("span");
+        value.className = "score-value";
+        value.textContent = player.points;
+        const plus = document.createElement("button");
+        plus.type = "button";
+        plus.textContent = "+";
+        plus.setAttribute("aria-label", `Add a point to ${player.name}`);
+        plus.addEventListener("click", () => changeScore(index, 1));
+        card.append(name, minus, value, plus);
+        scoreList.appendChild(card);
+      });
+    }
+
+    function changeScore(index, amount) {
+      players[index].points += amount;
+      savePlayers();
+      renderScores();
+      playSound("click");
+    }
+
+    function addPlayer() {
+      players.push({ name: `Player ${players.length + 1}`, points: 0 });
+      savePlayers();
+      renderScores();
+      setStatus("Player added.");
+      playSound("save");
+    }
+
+    function toggleSound() {
+      if (soundEnabled) {
+        playSound("modeOff");
+        soundEnabled = false;
+        setStatus("Sound off.");
+      } else {
+        soundEnabled = true;
+        setStatus("Sound on.");
+        playSound("modeOn");
+      }
+      saveSoundPreference();
+      syncSoundButton();
+    }
+
+    function unlockAudio() {
+      if (audioUnlocked) {
+        return;
+      }
+      const context = getAudioContext();
+      if (!context) {
+        return;
+      }
+      audioUnlocked = true;
+      try {
+        playTone(context, {
+          frequency: 440,
+          duration: 0.012,
+          type: "sine",
+          gain: 0.0001
+        }, context.currentTime);
+      } catch (error) {
+        audioUnlocked = false;
+      }
+    }
+
+    function playButtonFallbackSound(event) {
+      if (!closestButton(event.target)) {
+        return;
+      }
+      if (Date.now() - lastAnySoundAt < 120) {
+        return;
+      }
+      playSound("click");
+    }
+
+    function closestButton(target) {
+      let node = target;
+      while (node && node !== document) {
+        if (String(node.tagName || "").toLowerCase() === "button") {
+          return node;
+        }
+        node = node.parentElement || node.parentNode;
+      }
+      return null;
+    }
+
+    function playSound(name) {
+      if (!soundEnabled) {
+        return;
+      }
+      const effect = soundEffects[name] || soundEffects.click;
+      const nowMs = Date.now();
+      const waitMs = soundThrottleMs[name] || 0;
+      if (waitMs && nowMs - (lastSoundTimes[name] || 0) < waitMs) {
+        return;
+      }
+      lastSoundTimes[name] = nowMs;
+      lastAnySoundAt = nowMs;
+      const context = getAudioContext();
+      if (!context) {
+        return;
+      }
+      try {
+        const startAt = context.currentTime;
+        effect.forEach((tone) => playTone(context, tone, startAt + (tone.delay || 0)));
+      } catch (error) {
+        setStatus("Sound blocked.");
+      }
+    }
+
+    function getAudioContext() {
+      try {
+        const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextConstructor) {
+          return null;
+        }
+        if (!audioContext) {
+          audioContext = new AudioContextConstructor();
+        }
+        if (audioContext.state === "suspended") {
+          const resumeSound = audioContext.resume();
+          if (resumeSound && typeof resumeSound.catch === "function") {
+            resumeSound.catch(() => {});
+          }
+        }
+        return audioContext;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function playTone(context, tone, startAt) {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const duration = tone.duration || 0.05;
+      const attack = Math.min(0.012, duration / 3);
+      const toneGain = Math.max(0.0001, Math.min((tone.gain || 0.025) * soundMasterGain, 0.12));
+
+      oscillator.type = tone.type || "triangle";
+      oscillator.frequency.setValueAtTime(tone.frequency || 440, startAt);
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.gain.exponentialRampToValueAtTime(toneGain, startAt + attack);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(startAt);
+      oscillator.stop(startAt + duration + 0.03);
+    }
+
+    rollButton.addEventListener("click", rollAll);
+    document.getElementById("openSettingsButton").addEventListener("click", () => {
+      showScreen(settingsScreen);
+      setStatus("Settings open.");
+      playSound("open");
+    });
+    document.getElementById("openListsButton").addEventListener("click", () => {
+      renderSavedListSelect(savedListSelect.value);
+      showScreen(listsScreen);
+      setStatus("Custom lists open.");
+      playSound("open");
+    });
+    document.querySelectorAll(".backButton").forEach((button) => {
+      button.addEventListener("click", () => {
+        showScreen(gameScreen);
+        setStatus("Back to game.");
+        playSound("back");
+      });
+    });
+    document.getElementById("saveListsButton").addEventListener("click", saveNamedList);
+    document.getElementById("loadListButton").addEventListener("click", loadNamedList);
+    document.getElementById("deleteListButton").addEventListener("click", deleteNamedList);
+    document.getElementById("defaultsButton").addEventListener("click", resetDefaults);
+    document.getElementById("addColorButton").addEventListener("click", addColor);
+    document.getElementById("addPlayerButton").addEventListener("click", addPlayer);
+    soundButton.addEventListener("click", toggleSound);
+    savedListSelect.addEventListener("change", () => {
+      listNameInput.value = savedListSelect.value;
+      playSound("click");
+    });
+    positionInput.addEventListener("input", () => window.requestAnimationFrame(resizePositionInput));
+    difficulty.addEventListener("change", rollPosition);
+    document.addEventListener("pointerdown", unlockAudio, { capture: true, passive: true });
+    document.addEventListener("touchstart", unlockAudio, { capture: true, passive: true });
+    document.addEventListener("click", playButtonFallbackSound);
+    window.addEventListener("resize", fitColorName);
+    window.addEventListener("resize", resizePositionInput);
+
+    loadLists();
+    renderColorVisibility();
+    renderSavedListSelect();
+    renderPrompt();
+    renderScores();
+    syncSoundButton();
+  </script>
+</body>
+</html>
+
