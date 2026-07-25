@@ -620,6 +620,86 @@
       border: 2px solid #000000;
     }
 
+    .color-chances {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+      padding: 6px;
+      background: #ffffcc;
+      border: 4px inset #c0c0c0;
+    }
+
+    .color-chance-heading {
+      display: flex;
+      align-items: center;
+      margin: 0;
+      color: #000066;
+      font-family: "Courier New", Courier, monospace;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .color-chance-help {
+      margin: 0;
+      color: #000033;
+      font-family: "Courier New", Courier, monospace;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .color-chance-list {
+      display: grid;
+      gap: 6px;
+    }
+
+    .color-chance-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 44px 62px 44px;
+      gap: 6px;
+      align-items: center;
+      padding: 4px;
+      background: #ffffff;
+      border: 2px solid #000033;
+    }
+
+    .color-chance-name {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 6px;
+      color: #000033;
+      font-family: "Courier New", Courier, monospace;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .color-chance-name span:last-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .color-chance-value {
+      display: grid;
+      min-height: 34px;
+      place-items: center;
+      color: #000033;
+      background: #ffffcc;
+      border: 3px inset #c0c0c0;
+      font-family: "Courier New", Courier, monospace;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .color-chance-adjust {
+      min-width: 44px;
+      min-height: 44px;
+      padding: 2px 4px;
+      font-size: 20px;
+      line-height: 1;
+    }
+
     .scoreboard {
       padding: 8px;
       background:
@@ -852,6 +932,12 @@
       }
     }
 
+    @media (min-width: 720px) {
+      .color-chance-list {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
     @media (max-width: 840px) {
       .workspace {
         display: block;
@@ -923,6 +1009,10 @@
 
       .color-tools button {
         grid-column: 1 / -1;
+      }
+
+      .color-chance-row {
+        grid-template-columns: minmax(0, 1fr) 44px 58px 44px;
       }
 
       .roll {
@@ -1014,6 +1104,12 @@
             Avoid immediate repeats
           </label>
 
+          <section class="color-chances" aria-labelledby="colorChanceLabel">
+            <div class="color-chance-heading" id="colorChanceLabel">Color Chances</div>
+            <p class="color-chance-help">Tap + or − to change a color by 5%. The other shown colors rebalance automatically.</p>
+            <div class="color-chance-list" id="colorChanceList" aria-label="Color chances"></div>
+          </section>
+
           <div class="controls" style="margin-top: 8px;">
             <button class="backButton" type="button">BACK TO GAME</button>
           </div>
@@ -1062,7 +1158,7 @@
         </section>
       </section>
 
-      <div class="status" id="status">Ready.</div>
+      <div class="status" id="status" role="status">Ready.</div>
     </section>
   </main>
 
@@ -1115,6 +1211,7 @@
     const newColorName = document.getElementById("newColorName");
     const newColorHex = document.getElementById("newColorHex");
     const colorVisibility = document.getElementById("colorVisibility");
+    const colorChanceList = document.getElementById("colorChanceList");
     const positionInput = document.getElementById("positionInput");
     const listNameInput = document.getElementById("listNameInput");
     const savedListSelect = document.getElementById("savedListSelect");
@@ -1127,6 +1224,8 @@
     const soundStorageKey = "colorPositionSound";
     const hiddenColorsStorageKey = "colorPositionHiddenColors";
     const scoresStorageKey = "colorPositionScores";
+    const colorPercentagesStorageKey = "colorPositionColorPercentages";
+    const colorChanceStep = 5;
     const soundEffects = {
       click: [{ frequency: 520, duration: 0.045, type: "square", gain: 0.024 }],
       roll: [
@@ -1186,6 +1285,7 @@
     let colors = [...defaultColors];
     let positions = [...defaultPositions];
     let hiddenColorNames = new Set();
+    let colorPercentages = {};
     let players = loadPlayers();
     let isRolling = false;
     let currentColor = colors[4];
@@ -1222,6 +1322,210 @@
       return colors.filter((color) => !hiddenColorNames.has(color.name.toLowerCase()));
     }
 
+    function colorKey(color) {
+      return color.name.toLowerCase();
+    }
+
+    function isValidPercentage(value) {
+      return Number.isFinite(value) && value >= 0;
+    }
+
+    function formatPercentage(value) {
+      return Number(value.toFixed(1)).toString();
+    }
+
+    function percentageTotal(items, percentages = colorPercentages) {
+      return items.reduce((total, color) => {
+        const percentage = Number(percentages[colorKey(color)]);
+        return total + (isValidPercentage(percentage) ? percentage : 0);
+      }, 0);
+    }
+
+    function parseStoredColorPercentages(value) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return {};
+      }
+
+      return Object.entries(value).reduce((percentages, [key, percentage]) => {
+        const parsedPercentage = Number(percentage);
+        if (typeof key === "string" && isValidPercentage(parsedPercentage)) {
+          percentages[key.toLowerCase()] = parsedPercentage;
+        }
+        return percentages;
+      }, {});
+    }
+
+    function setEqualColorPercentages(items) {
+      if (!items.length) {
+        return;
+      }
+
+      const percentage = 100 / items.length;
+      items.forEach((color) => {
+        colorPercentages[colorKey(color)] = percentage;
+      });
+    }
+
+    function effectiveColorPercentage(color, pool = visibleColors()) {
+      if (!pool.length) {
+        return 0;
+      }
+
+      const total = percentageTotal(pool);
+      if (total <= 0) {
+        return 100 / pool.length;
+      }
+
+      return (Number(colorPercentages[colorKey(color)]) / total) * 100;
+    }
+
+    function reconcileColorPercentages() {
+      const validColorKeys = new Set(colors.map(colorKey));
+      colorPercentages = Object.entries(colorPercentages).reduce((percentages, [key, percentage]) => {
+        if (validColorKeys.has(key) && isValidPercentage(Number(percentage))) {
+          percentages[key] = Number(percentage);
+        }
+        return percentages;
+      }, {});
+
+      const configuredColors = colors.filter((color) => Object.prototype.hasOwnProperty.call(colorPercentages, colorKey(color)));
+      if (!configuredColors.length || percentageTotal(configuredColors) <= 0) {
+        colorPercentages = {};
+        setEqualColorPercentages(colors);
+        return;
+      }
+
+      const average = percentageTotal(configuredColors) / configuredColors.length;
+      colors.forEach((color) => {
+        if (!Object.prototype.hasOwnProperty.call(colorPercentages, colorKey(color))) {
+          colorPercentages[colorKey(color)] = average;
+        }
+      });
+    }
+
+    function persistColorPercentages() {
+      localStorage.setItem(colorPercentagesStorageKey, JSON.stringify(colorPercentages));
+    }
+
+    function randomColor(items, current) {
+      if (!items.length) {
+        return null;
+      }
+
+      const pool = !avoidRepeats.checked || items.length === 1
+        ? items
+        : items.filter((item) => item.name !== current?.name);
+      const total = percentageTotal(pool);
+
+      if (total <= 0) {
+        return pool[Math.floor(Math.random() * pool.length)];
+      }
+
+      let roll = Math.random() * total;
+      for (const color of pool) {
+        roll -= Number(colorPercentages[colorKey(color)]) || 0;
+        if (roll < 0) {
+          return color;
+        }
+      }
+
+      return pool[pool.length - 1];
+    }
+
+    function renderColorChanceControls(focus = null) {
+      reconcileColorPercentages();
+      colorChanceList.innerHTML = "";
+
+      const pool = visibleColors();
+      pool.forEach((color) => {
+        const key = colorKey(color);
+        const percentage = effectiveColorPercentage(color, pool);
+        const row = document.createElement("div");
+        row.className = "color-chance-row";
+
+        const name = document.createElement("span");
+        name.className = "color-chance-name";
+        const dot = document.createElement("span");
+        dot.className = "color-dot";
+        dot.style.background = color.hex;
+        const text = document.createElement("span");
+        text.textContent = color.name;
+        name.append(dot, text);
+
+        const decrease = document.createElement("button");
+        decrease.className = "color-chance-adjust";
+        decrease.type = "button";
+        decrease.textContent = "−";
+        decrease.disabled = pool.length === 1 || percentage <= 0;
+        decrease.setAttribute("aria-label", `Decrease ${color.name} chance by ${colorChanceStep}%`);
+        decrease.addEventListener("click", () => changeColorChance(color, -colorChanceStep));
+
+        const value = document.createElement("span");
+        value.className = "color-chance-value";
+        value.textContent = `${formatPercentage(percentage)}%`;
+        value.setAttribute("aria-label", `${color.name} chance: ${formatPercentage(percentage)}%`);
+
+        const increase = document.createElement("button");
+        increase.className = "color-chance-adjust";
+        increase.type = "button";
+        increase.textContent = "+";
+        increase.disabled = pool.length === 1 || percentage >= 100;
+        increase.setAttribute("aria-label", `Increase ${color.name} chance by ${colorChanceStep}%`);
+        increase.addEventListener("click", () => changeColorChance(color, colorChanceStep));
+
+        row.append(name, decrease, value, increase);
+        colorChanceList.appendChild(row);
+
+        if (focus?.key === key) {
+          const requestedButton = focus.action === "increase" ? increase : decrease;
+          const fallbackButton = focus.action === "increase" ? decrease : increase;
+          window.requestAnimationFrame(() => (requestedButton.disabled ? fallbackButton : requestedButton).focus());
+        }
+      });
+    }
+
+    function changeColorChance(color, change) {
+      const pool = visibleColors();
+      if (pool.length <= 1) {
+        return;
+      }
+
+      const key = colorKey(color);
+      if (percentageTotal(pool) <= 0) {
+        pool.forEach((item) => {
+          colorPercentages[colorKey(item)] = 1;
+        });
+      }
+
+      const visibleTotal = percentageTotal(pool);
+      const current = effectiveColorPercentage(color, pool);
+      const next = Math.max(0, Math.min(100, current + change));
+      if (next === current) {
+        return;
+      }
+
+      const others = pool.filter((item) => colorKey(item) !== key);
+      const otherTotal = percentageTotal(others);
+      const remaining = visibleTotal * ((100 - next) / 100);
+      colorPercentages[key] = visibleTotal * (next / 100);
+
+      if (otherTotal > 0) {
+        others.forEach((item) => {
+          const itemKey = colorKey(item);
+          colorPercentages[itemKey] = (Number(colorPercentages[itemKey]) / otherTotal) * remaining;
+        });
+      } else {
+        others.forEach((item) => {
+          colorPercentages[colorKey(item)] = remaining / others.length;
+        });
+      }
+
+      persistColorPercentages();
+      renderColorChanceControls({ key, action: change > 0 ? "increase" : "decrease" });
+      setStatus(`${color.name}: ${formatPercentage(next)}%.`);
+      playSound("click");
+    }
+
     function renderPrompt() {
       colorName.textContent = currentColor.name.toUpperCase();
       colorSwatch.style.background = currentColor.hex;
@@ -1256,7 +1560,7 @@
 
       const colorPool = visibleColors();
       const positionPool = filteredPositions();
-      const finalColor = randomItem(colorPool, currentColor) || currentColor;
+      const finalColor = randomColor(colorPool, currentColor) || currentColor;
       const finalPosition = randomItem(positionPool, currentPosition) || currentPosition;
       const totalSteps = 12;
       let step = 0;
@@ -1267,7 +1571,7 @@
 
       function spin() {
         const isFinalStep = step === totalSteps - 1;
-        currentColor = isFinalStep ? finalColor : randomItem(colorPool, currentColor) || currentColor;
+        currentColor = isFinalStep ? finalColor : randomColor(colorPool, currentColor) || currentColor;
         currentPosition = isFinalStep ? finalPosition : randomItem(positionPool, currentPosition) || currentPosition;
         renderPrompt();
 
@@ -1354,6 +1658,8 @@
             hiddenColorNames.add(key);
           }
           persistHiddenColors();
+          reconcileColorPercentages();
+          persistColorPercentages();
           setStatus(`${color.name} ${checkbox.checked ? "shown" : "hidden"}.`);
           playSound("click");
         });
@@ -1385,6 +1691,8 @@
       colors.push({ name, hex, text });
       colorInput.value = colorLines();
       localStorage.setItem("colorPositionColors", colorInput.value);
+      reconcileColorPercentages();
+      persistColorPercentages();
       renderColorVisibility();
       newColorName.value = "";
       setStatus(`Added ${name}.`);
@@ -1422,11 +1730,13 @@
       positions = parsedPositions;
       resizePositionInput();
       hiddenColorNames = new Set([...hiddenColorNames].filter((name) => colors.some((color) => color.name.toLowerCase() === name)));
+      reconcileColorPercentages();
       currentColor = colors[0];
       currentPosition = positions[0];
       localStorage.setItem("colorPositionColors", colorInput.value);
       localStorage.setItem("colorPositionPositions", positionInput.value);
       persistHiddenColors();
+      persistColorPercentages();
       renderColorVisibility();
       renderPrompt();
       setStatus(message);
@@ -1481,7 +1791,8 @@
       namedLists[name] = {
         colors: colorInput.value,
         positions: positionInput.value,
-        hiddenColors: [...hiddenColorNames]
+        hiddenColors: [...hiddenColorNames],
+        colorPercentages: { ...colorPercentages }
       };
       writeNamedLists(namedLists);
       renderSavedListSelect(name);
@@ -1502,6 +1813,7 @@
       colorInput.value = list.colors;
       positionInput.value = list.positions;
       hiddenColorNames = new Set(list.hiddenColors || []);
+      colorPercentages = parseStoredColorPercentages(list.colorPercentages);
       saveLists(`Loaded list: ${name}.`);
       renderSavedListSelect(name);
       playSound("load");
@@ -1544,6 +1856,12 @@
       if (savedPositions) {
         positions = parsePositions(savedPositions);
       }
+      try {
+        colorPercentages = parseStoredColorPercentages(JSON.parse(localStorage.getItem(colorPercentagesStorageKey)));
+      } catch (error) {
+        colorPercentages = {};
+      }
+      reconcileColorPercentages();
       resizePositionInput();
     }
 
@@ -1556,9 +1874,12 @@
       localStorage.removeItem("colorPositionColors");
       localStorage.removeItem("colorPositionPositions");
       localStorage.removeItem(hiddenColorsStorageKey);
+      localStorage.removeItem(colorPercentagesStorageKey);
       currentColor = colors[4];
       currentPosition = positions[0];
       hiddenColorNames = new Set();
+      colorPercentages = {};
+      reconcileColorPercentages();
       renderPrompt();
       renderColorVisibility();
       setStatus("Default lists restored.");
@@ -1782,6 +2103,7 @@
 
     rollButton.addEventListener("click", rollAll);
     document.getElementById("openSettingsButton").addEventListener("click", () => {
+      renderColorChanceControls();
       showScreen(settingsScreen);
       setStatus("Settings open.");
       playSound("open");
