@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="apple-touch-icon" href="icon.png">
   <link rel="icon" type="image/png" href="icon.png">
+  <link rel="stylesheet" href="color-game-sync.css?v=1">
   <title>Color Game</title>
   <style>
     * {
@@ -1162,6 +1163,7 @@
     </section>
   </main>
 
+  <script src="color-game-storage.js?v=1"></script>
   <script>
     const defaultColors = [
       { name: "Red", hex: "#f34a3d", text: "#ffffff" },
@@ -1225,6 +1227,13 @@
     const hiddenColorsStorageKey = "colorPositionHiddenColors";
     const scoresStorageKey = "colorPositionScores";
     const colorPercentagesStorageKey = "colorPositionColorPercentages";
+    const persistentStore = window.ColorGameStorage;
+    let persistentStorageStartupError = null;
+    try {
+      persistentStore.assertOwnedStorageValid();
+    } catch (error) {
+      persistentStorageStartupError = error;
+    }
     const colorChanceStep = 5;
     const soundEffects = {
       click: [{ frequency: 520, duration: 0.045, type: "square", gain: 0.024 }],
@@ -1403,8 +1412,30 @@
       });
     }
 
-    function persistColorPercentages() {
-      localStorage.setItem(colorPercentagesStorageKey, JSON.stringify(colorPercentages));
+    function reportPersistence(promise, label) {
+      return Promise.resolve(promise).then(() => true).catch((error) => {
+        const message = error instanceof Error ? error.message : "The change could not be saved safely.";
+        setStatus(`${label} not saved. ${message}`);
+        playSound("error");
+        return false;
+      });
+    }
+
+    function configurationSyncValue() {
+      return {
+        version: persistentStore.schemaVersion,
+        colorsText: colors.map((color) => `${color.name}: ${color.hex}`).join("\n"),
+        positionsText: positions.map((position) => position.name).join("\n"),
+        hiddenColors: [...hiddenColorNames],
+        colorPercentages: { ...colorPercentages }
+      };
+    }
+
+    function persistConfiguration() {
+      return reportPersistence(
+        persistentStore.saveConfiguration(configurationSyncValue()),
+        "Color Game settings"
+      );
     }
 
     function randomColor(items, current) {
@@ -1484,7 +1515,7 @@
       });
     }
 
-    function changeColorChance(color, change) {
+    async function changeColorChance(color, change) {
       const pool = visibleColors();
       if (pool.length <= 1) {
         return;
@@ -1520,7 +1551,7 @@
         });
       }
 
-      persistColorPercentages();
+      if (!await persistConfiguration()) return;
       renderColorChanceControls({ key, action: change > 0 ? "increase" : "decrease" });
       setStatus(`${color.name}: ${formatPercentage(next)}%.`);
       playSound("click");
@@ -1628,10 +1659,6 @@
       return colors.map((color) => `${color.name}: ${color.hex}`).join("\n");
     }
 
-    function persistHiddenColors() {
-      localStorage.setItem(hiddenColorsStorageKey, JSON.stringify([...hiddenColorNames]));
-    }
-
     function renderColorVisibility() {
       colorVisibility.innerHTML = "";
       const currentNames = new Set(colors.map((color) => color.name.toLowerCase()));
@@ -1645,7 +1672,7 @@
         checkbox.type = "checkbox";
         checkbox.checked = !hiddenColorNames.has(key);
         checkbox.setAttribute("aria-label", `Show ${color.name}`);
-        checkbox.addEventListener("change", () => {
+        checkbox.addEventListener("change", async () => {
           if (!checkbox.checked && visibleColors().length === 1) {
             checkbox.checked = true;
             setStatus("Keep at least one color visible.");
@@ -1657,9 +1684,8 @@
           } else {
             hiddenColorNames.add(key);
           }
-          persistHiddenColors();
           reconcileColorPercentages();
-          persistColorPercentages();
+          if (!await persistConfiguration()) return;
           setStatus(`${color.name} ${checkbox.checked ? "shown" : "hidden"}.`);
           playSound("click");
         });
@@ -1673,7 +1699,7 @@
       });
     }
 
-    function addColor() {
+    async function addColor() {
       const name = newColorName.value.trim();
       const hex = newColorHex.value;
       if (!name) {
@@ -1690,9 +1716,8 @@
       const text = ["#ffe45c", "#fffdf2", "#ff8a34", "#ff4aa6", "#18c9be"].includes(hex.toLowerCase()) ? "#101116" : "#ffffff";
       colors.push({ name, hex, text });
       colorInput.value = colorLines();
-      localStorage.setItem("colorPositionColors", colorInput.value);
       reconcileColorPercentages();
-      persistColorPercentages();
+      if (!await persistConfiguration()) return;
       renderColorVisibility();
       newColorName.value = "";
       setStatus(`Added ${name}.`);
@@ -1716,7 +1741,7 @@
       positionInput.style.height = `${positionInput.scrollHeight + borderHeight}px`;
     }
 
-    function saveLists(message = "Custom lists saved.") {
+    async function saveLists(message = "Custom lists saved.") {
       const parsedColors = parseColors(colorInput.value);
       const parsedPositions = parsePositions(positionInput.value);
 
@@ -1733,10 +1758,9 @@
       reconcileColorPercentages();
       currentColor = colors[0];
       currentPosition = positions[0];
-      localStorage.setItem("colorPositionColors", colorInput.value);
-      localStorage.setItem("colorPositionPositions", positionInput.value);
-      persistHiddenColors();
-      persistColorPercentages();
+      const saved = await persistConfiguration();
+      if (!saved) return false;
+      persistentStore.setEditorState("configuration", { dirty: false });
       renderColorVisibility();
       renderPrompt();
       setStatus(message);
@@ -1745,15 +1769,7 @@
     }
 
     function readNamedLists() {
-      try {
-        return JSON.parse(localStorage.getItem(namedListsStorageKey)) || {};
-      } catch (error) {
-        return {};
-      }
-    }
-
-    function writeNamedLists(namedLists) {
-      localStorage.setItem(namedListsStorageKey, JSON.stringify(namedLists));
+      return persistentStore.readNamedListsForDisplay();
     }
 
     function renderSavedListSelect(selectedName = "") {
@@ -1775,7 +1791,7 @@
       });
     }
 
-    function saveNamedList() {
+    async function saveNamedList() {
       const name = listNameInput.value.trim();
       if (!name) {
         setStatus("Name the list first.");
@@ -1783,22 +1799,22 @@
         return;
       }
 
-      if (!saveLists(`Saved list: ${name}.`)) {
+      if (!await saveLists(`Saved list: ${name}.`)) {
         return;
       }
 
-      const namedLists = readNamedLists();
-      namedLists[name] = {
+      const saved = await reportPersistence(persistentStore.saveNamedList({
+        version: persistentStore.schemaVersion,
+        name,
         colors: colorInput.value,
         positions: positionInput.value,
         hiddenColors: [...hiddenColorNames],
         colorPercentages: { ...colorPercentages }
-      };
-      writeNamedLists(namedLists);
-      renderSavedListSelect(name);
+      }), `Saved list ${name}`);
+      if (saved) renderSavedListSelect(name);
     }
 
-    function loadNamedList() {
+    async function loadNamedList() {
       const name = savedListSelect.value || listNameInput.value.trim();
       const namedLists = readNamedLists();
       const list = namedLists[name];
@@ -1814,12 +1830,12 @@
       positionInput.value = list.positions;
       hiddenColorNames = new Set(list.hiddenColors || []);
       colorPercentages = parseStoredColorPercentages(list.colorPercentages);
-      saveLists(`Loaded list: ${name}.`);
+      if (!await saveLists(`Loaded list: ${name}.`)) return;
       renderSavedListSelect(name);
       playSound("load");
     }
 
-    function deleteNamedList() {
+    async function deleteNamedList() {
       const name = savedListSelect.value || listNameInput.value.trim();
       const namedLists = readNamedLists();
 
@@ -1829,8 +1845,11 @@
         return;
       }
 
-      delete namedLists[name];
-      writeNamedLists(namedLists);
+      const removed = await reportPersistence(
+        persistentStore.removeNamedList(name),
+        `Saved list ${name}`
+      );
+      if (!removed) return;
       listNameInput.value = "";
       renderSavedListSelect();
       setStatus(`Deleted list: ${name}.`);
@@ -1842,10 +1861,7 @@
       const savedPositions = localStorage.getItem("colorPositionPositions");
       colorInput.value = savedColors || defaultColors.map((color) => `${color.name}: ${color.hex}`).join("\n");
       positionInput.value = savedPositions || defaultPositions.map((position) => position.name).join("\n");
-
-      if (savedColors) {
-        colors = parseColors(savedColors);
-      }
+      colors = savedColors ? parseColors(savedColors) : [...defaultColors];
 
       try {
         hiddenColorNames = new Set(JSON.parse(localStorage.getItem(hiddenColorsStorageKey)) || []);
@@ -1853,9 +1869,7 @@
         hiddenColorNames = new Set();
       }
 
-      if (savedPositions) {
-        positions = parsePositions(savedPositions);
-      }
+      positions = savedPositions ? parsePositions(savedPositions) : [...defaultPositions];
       try {
         colorPercentages = parseStoredColorPercentages(JSON.parse(localStorage.getItem(colorPercentagesStorageKey)));
       } catch (error) {
@@ -1865,16 +1879,18 @@
       resizePositionInput();
     }
 
-    function resetDefaults() {
+    async function resetDefaults() {
       colors = [...defaultColors];
       positions = [...defaultPositions];
       colorInput.value = defaultColors.map((color) => `${color.name}: ${color.hex}`).join("\n");
       positionInput.value = defaultPositions.map((position) => position.name).join("\n");
       resizePositionInput();
-      localStorage.removeItem("colorPositionColors");
-      localStorage.removeItem("colorPositionPositions");
-      localStorage.removeItem(hiddenColorsStorageKey);
-      localStorage.removeItem(colorPercentagesStorageKey);
+      const reset = await reportPersistence(
+        persistentStore.resetConfiguration(),
+        "Default lists"
+      );
+      if (!reset) return;
+      persistentStore.setEditorState("configuration", { dirty: false });
       currentColor = colors[4];
       currentPosition = positions[0];
       hiddenColorNames = new Set();
@@ -1895,11 +1911,10 @@
     }
 
     function saveSoundPreference() {
-      try {
-        localStorage.setItem(soundStorageKey, soundEnabled ? "on" : "off");
-      } catch (error) {
-        setStatus("Sound setting not saved.");
-      }
+      return reportPersistence(
+        persistentStore.saveSound(soundEnabled),
+        "Sound setting"
+      );
     }
 
     function syncSoundButton() {
@@ -1923,7 +1938,10 @@
     }
 
     function savePlayers() {
-      localStorage.setItem(scoresStorageKey, JSON.stringify(players));
+      return reportPersistence(
+        persistentStore.saveScoreboard(players),
+        "Scoreboard"
+      );
     }
 
     function renderScores(focusPlayerIndex = null) {
@@ -1933,18 +1951,19 @@
         card.className = "score-card";
         const name = document.createElement("input");
         name.type = "text";
+        name.maxLength = 80;
         name.value = player.name;
         name.placeholder = `Player ${index + 1}`;
         name.autocomplete = "off";
         name.setAttribute("aria-label", `Player ${index + 1} name`);
         name.addEventListener("input", () => {
           players[index].name = name.value;
-          savePlayers();
+          void savePlayers();
         });
         name.addEventListener("change", () => {
           players[index].name = name.value.trim();
           name.value = players[index].name;
-          savePlayers();
+          void savePlayers();
         });
         const playerLabel = player.name.trim() || `Player ${index + 1}`;
         const minus = document.createElement("button");
@@ -1968,7 +1987,7 @@
 
     function changeScore(index, amount) {
       players[index].points += amount;
-      savePlayers();
+      void savePlayers();
       renderScores();
       playSound("click");
     }
@@ -1976,13 +1995,13 @@
     function addPlayer() {
       const newPlayerIndex = players.length;
       players.push({ name: "", points: 0 });
-      savePlayers();
+      void savePlayers();
       renderScores(newPlayerIndex);
       setStatus("Player added. Type a name.");
       playSound("save");
     }
 
-    function toggleSound() {
+    async function toggleSound() {
       if (soundEnabled) {
         playSound("modeOff");
         soundEnabled = false;
@@ -1992,7 +2011,7 @@
         setStatus("Sound on.");
         playSound("modeOn");
       }
-      saveSoundPreference();
+      await saveSoundPreference();
       syncSoundButton();
     }
 
@@ -2132,13 +2151,62 @@
       listNameInput.value = savedListSelect.value;
       playSound("click");
     });
-    positionInput.addEventListener("input", () => window.requestAnimationFrame(resizePositionInput));
+    positionInput.addEventListener("focus", () => {
+      persistentStore.setEditorState("configuration", { active: true });
+    });
+    positionInput.addEventListener("blur", () => {
+      persistentStore.setEditorState("configuration", { active: false });
+    });
+    positionInput.addEventListener("input", () => {
+      persistentStore.setEditorState("configuration", { dirty: true });
+      window.requestAnimationFrame(resizePositionInput);
+    });
+    [listNameInput, savedListSelect].forEach((editor) => {
+      editor.addEventListener("focus", () => {
+        persistentStore.setEditorState("saved-lists", { active: true });
+      });
+      editor.addEventListener("blur", () => {
+        persistentStore.setEditorState("saved-lists", { active: false });
+      });
+    });
+    scoreList.addEventListener("focusin", () => {
+      persistentStore.setEditorState("scoreboard", { active: true });
+    });
+    scoreList.addEventListener("focusout", () => {
+      Promise.resolve().then(() => {
+        persistentStore.setEditorState("scoreboard", {
+          active: scoreList.contains(document.activeElement)
+        });
+      });
+    });
     difficulty.addEventListener("change", rollPosition);
     document.addEventListener("pointerdown", unlockAudio, { capture: true, passive: true });
     document.addEventListener("touchstart", unlockAudio, { capture: true, passive: true });
     document.addEventListener("click", playButtonFallbackSound);
     window.addEventListener("resize", fitColorName);
     window.addEventListener("resize", resizePositionInput);
+    window.addEventListener(persistentStore.changeEvent, (event) => {
+      const detail = event.detail;
+      if (!detail || detail.source === "local") return;
+      if (detail.collection === "configuration") {
+        loadLists();
+        currentColor = colors[0];
+        currentPosition = positions[0];
+        persistentStore.setEditorState("configuration", { dirty: false });
+        renderColorVisibility();
+        renderColorChanceControls();
+        renderPrompt();
+      } else if (detail.collection === "saved-lists") {
+        renderSavedListSelect();
+      } else if (detail.collection === "scoreboard") {
+        players = loadPlayers();
+        renderScores();
+      } else if (detail.collection === "preferences") {
+        soundEnabled = loadSoundPreference();
+        syncSoundButton();
+      }
+      setStatus("Synchronized Color Game data applied.");
+    });
 
     loadLists();
     renderColorVisibility();
@@ -2146,6 +2214,13 @@
     renderPrompt();
     renderScores();
     syncSoundButton();
+    if (persistentStorageStartupError) {
+      setStatus(
+        `${persistentStorageStartupError.message} Download a raw backup before changing that data.`
+      );
+    }
   </script>
+  <script src="https://ryan-app-sync.ryan-666-mp3.chatgpt.site/ryan-app-sync.js"></script>
+  <script src="color-game-sync.js?v=1"></script>
 </body>
 </html>
