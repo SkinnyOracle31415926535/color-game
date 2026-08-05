@@ -927,6 +927,91 @@
     }),
   });
 
+  // Temporary cross-device migration support. The transfer APIs are local-only
+  // and reuse the same validators as the normal persistence path.
+  const canonicalNamedLists = (candidate) => {
+    const entries = safeEntries(candidate);
+    if (!entries) return null;
+    const result = Object.create(null);
+    for (const [name, value] of entries) {
+      const provisional = legacyListToSync(name, value);
+      if (!listNameValid(name) || !provisional ||
+          !validateNamedList(provisional, `list-${'0'.repeat(64)}`)) {
+        return null;
+      }
+      result[name] = syncListToLegacy(provisional);
+    }
+    return result;
+  };
+
+  const transferSnapshot = () => {
+    const snapshot = captureRaw(RAW_BACKUP_KEYS);
+    const configuration = readConfigurationFromSnapshot(snapshot);
+    const namedLists = readNamedListsFromRaw(snapshot[4].raw);
+    const scoreboard = readScoreboardFromRaw(snapshot[5].raw);
+    const sound = readSoundFromRaw(snapshot[6].raw);
+    assertRawUnchanged(snapshot, 'Color Game data');
+    return {
+      configuration: configuration ? canonicalConfiguration(configuration) : null,
+      named_lists: canonicalNamedLists(namedLists),
+      scoreboard: scoreboard ? canonicalScoreboard(scoreboard) : null,
+      sound: sound ? { version: SCHEMA_VERSION, enabled: sound.enabled } : null,
+    };
+  };
+
+  const validateTransferSnapshot = (candidate) => {
+    if (!exactKeys(candidate, ['configuration', 'named_lists', 'scoreboard', 'sound'])) {
+      return false;
+    }
+    const value = Object.fromEntries(safeEntries(candidate));
+    const namedLists = canonicalNamedLists(value.named_lists);
+    return namedLists !== null &&
+      (value.configuration === null || validateConfiguration(value.configuration)) &&
+      (value.scoreboard === null || validateScoreboard(value.scoreboard)) &&
+      (value.sound === null || validateSound(value.sound));
+  };
+
+  const applyTransferSnapshot = (candidate) => {
+    if (!validateTransferSnapshot(candidate)) {
+      return Promise.reject(new Error('The Color Game transfer file is invalid.'));
+    }
+    const value = Object.fromEntries(safeEntries(candidate));
+    const configuration = value.configuration === null
+      ? null
+      : canonicalConfiguration(value.configuration);
+    const namedLists = canonicalNamedLists(value.named_lists);
+    const scoreboard = value.scoreboard === null
+      ? null
+      : canonicalScoreboard(value.scoreboard);
+    const sound = value.sound === null
+      ? null
+      : { version: SCHEMA_VERSION, enabled: value.sound.enabled };
+
+    return withAggregateLock(() => {
+      const snapshot = captureRaw(RAW_BACKUP_KEYS);
+      compareAndSet(snapshot, [
+        { key: STORAGE_KEYS.colors, raw: configuration ? configuration.colorsText : null },
+        { key: STORAGE_KEYS.positions, raw: configuration ? configuration.positionsText : null },
+        {
+          key: STORAGE_KEYS.hiddenColors,
+          raw: configuration ? JSON.stringify(configuration.hiddenColors) : null,
+        },
+        {
+          key: STORAGE_KEYS.colorPercentages,
+          raw: configuration ? JSON.stringify(configuration.colorPercentages) : null,
+        },
+        { key: STORAGE_KEYS.namedLists, raw: JSON.stringify(namedLists) },
+        { key: STORAGE_KEYS.scores, raw: scoreboard ? JSON.stringify(scoreboard.players) : null },
+        { key: STORAGE_KEYS.sound, raw: sound ? sound.enabled ? 'on' : 'off' : null },
+      ], 'Color Game temporary data transfer');
+      dispatchChange('configuration', 'migration');
+      dispatchChange('saved-lists', 'migration');
+      dispatchChange('scoreboard', 'migration');
+      dispatchChange('preferences', 'migration');
+      return true;
+    });
+  };
+
   window.ColorGameStorage = Object.freeze({
     appId: APP_ID,
     schemaVersion: SCHEMA_VERSION,
@@ -935,6 +1020,9 @@
     storageKeys: STORAGE_KEYS,
     rawBackupKeys: RAW_BACKUP_KEYS,
     rawBackup,
+    transferSnapshot,
+    validateTransferSnapshot,
+    applyTransferSnapshot,
     makeAdapters,
     attachHandles,
     listRecordId,

@@ -209,6 +209,48 @@ test('raw backup contains the exact seven owned keys in order and preserves raw 
   assert.equal(backup.records.some(({ key }) => key === 'unrelatedAppKey'), false);
 });
 
+test('temporary transfer snapshots validate before replacing only owned Color Game keys', async () => {
+  const environment = loadStorage({
+    colorPositionColors: 'Red: #ff0000',
+    colorPositionPositions: 'Hollow Hold',
+    colorPositionHiddenColors: '[]',
+    colorPositionColorPercentages: '{"red":100}',
+    colorPositionNamedLists: JSON.stringify({ Warmup: validLegacyList() }),
+    colorPositionScores: '[{"name":"A","points":1}]',
+    colorPositionSound: 'on',
+    unrelatedAppKey: 'preserved',
+  });
+  const snapshot = environment.api.transferSnapshot();
+  assert.equal(environment.api.validateTransferSnapshot(snapshot), true);
+  const incoming = inRealm(environment, {
+    ...plain(snapshot),
+    scoreboard: validScoreboard(42),
+    sound: { version: 1, enabled: false },
+  });
+
+  await environment.api.applyTransferSnapshot(incoming);
+
+  assert.equal(JSON.parse(environment.localStorage.getItem('colorPositionScores'))[0].points, 42);
+  assert.equal(environment.localStorage.getItem('colorPositionSound'), 'off');
+  assert.equal(environment.localStorage.getItem('unrelatedAppKey'), 'preserved');
+  assert.deepEqual(
+    environment.events.map((event) => event.detail.source),
+    ['migration', 'migration', 'migration', 'migration'],
+  );
+
+  const before = environment.localStorage.snapshot();
+  await assert.rejects(
+    environment.api.applyTransferSnapshot(inRealm(environment, {
+      configuration: null,
+      named_lists: [],
+      scoreboard: null,
+      sound: null,
+    })),
+    /transfer file is invalid/,
+  );
+  assert.deepEqual(environment.localStorage.snapshot(), before);
+});
+
 test('malformed existing aggregates fail closed and retain every raw byte', async (t) => {
   const cases = [
     {
