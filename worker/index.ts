@@ -26,7 +26,12 @@ interface ExecutionContext {
 // dangerouslyAllowSVG: true in next.config.js and uncomment below:
 // const imageConfig: ImageConfig = { dangerouslyAllowSVG: true };
 
-const privateAppSync = createPrivateAppSync("color-game");
+const privateAppSync = createPrivateAppSync("color-game", [
+  "configuration",
+  "saved-lists",
+  "scoreboard",
+  "preferences",
+]);
 
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

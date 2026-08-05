@@ -21,6 +21,7 @@ const assetsByApp = {
     "index.html",
     "color-game-storage.js",
     "temporary-data-transfer.js",
+    "private-semantic-sync.js",
     "site.webmanifest",
     "icon.png",
     "favicon-32.png",
