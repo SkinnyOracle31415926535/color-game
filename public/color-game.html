@@ -3,8 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no">
-  <link rel="apple-touch-icon" href="icons/color-game-icon.png">
-  <link rel="icon" type="image/png" href="icons/color-game-icon.png">
+  <meta name="theme-color" content="#0033ff">
+  <meta name="application-name" content="Color Game">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Color Game">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <script src="/color-game-storage.js"></script>
   <script>
     (() => {
       const stopZoom = (event) => event.preventDefault();
@@ -1342,8 +1349,41 @@
       return colors.map((color) => `${color.name}: ${color.hex}`).join("\n");
     }
 
+    function colorPercentagesForStorage() {
+      try {
+        const value = JSON.parse(localStorage.getItem("colorPositionColorPercentages") || "{}");
+        return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+      } catch (error) {
+        return {};
+      }
+    }
+
+    function currentConfiguration() {
+      return {
+        version: 1,
+        colorsText: colorInput.value,
+        positionsText: positionInput.value,
+        hiddenColors: [...hiddenColorNames],
+        colorPercentages: colorPercentagesForStorage()
+      };
+    }
+
+    function persistWithMigration(operation, fallback, failureMessage) {
+      if (!window.ColorGameStorage) {
+        fallback();
+        return;
+      }
+      void operation().catch((error) => {
+        setStatus(error?.message || failureMessage);
+      });
+    }
+
     function persistHiddenColors() {
-      localStorage.setItem(hiddenColorsStorageKey, JSON.stringify([...hiddenColorNames]));
+      persistWithMigration(
+        () => window.ColorGameStorage.saveConfiguration(currentConfiguration()),
+        () => localStorage.setItem(hiddenColorsStorageKey, JSON.stringify([...hiddenColorNames])),
+        "Color settings were preserved locally but need review before sync."
+      );
     }
 
     function renderColorVisibility() {
@@ -1402,7 +1442,7 @@
       const text = ["#ffe45c", "#fffdf2", "#ff8a34", "#ff4aa6", "#18c9be"].includes(hex.toLowerCase()) ? "#101116" : "#ffffff";
       colors.push({ name, hex, text });
       colorInput.value = colorLines();
-      localStorage.setItem("colorPositionColors", colorInput.value);
+      persistHiddenColors();
       renderColorVisibility();
       newColorName.value = "";
       setStatus(`Added ${name}.`);
@@ -1442,8 +1482,6 @@
       hiddenColorNames = new Set([...hiddenColorNames].filter((name) => colors.some((color) => color.name.toLowerCase() === name)));
       currentColor = colors[0];
       currentPosition = positions[0];
-      localStorage.setItem("colorPositionColors", colorInput.value);
-      localStorage.setItem("colorPositionPositions", positionInput.value);
       persistHiddenColors();
       renderColorVisibility();
       renderPrompt();
@@ -1453,6 +1491,9 @@
     }
 
     function readNamedLists() {
+      if (window.ColorGameStorage) {
+        return window.ColorGameStorage.readNamedListsForDisplay();
+      }
       try {
         return JSON.parse(localStorage.getItem(namedListsStorageKey)) || {};
       } catch (error) {
@@ -1495,14 +1536,29 @@
         return;
       }
 
-      const namedLists = readNamedLists();
-      namedLists[name] = {
+      const nextList = {
+        version: 1,
+        name,
         colors: colorInput.value,
         positions: positionInput.value,
-        hiddenColors: [...hiddenColorNames]
+        hiddenColors: [...hiddenColorNames],
+        colorPercentages: colorPercentagesForStorage()
       };
-      writeNamedLists(namedLists);
-      renderSavedListSelect(name);
+      persistWithMigration(
+        () => window.ColorGameStorage.saveNamedList(nextList).then(() => renderSavedListSelect(name)),
+        () => {
+          const namedLists = readNamedLists();
+          namedLists[name] = {
+            colors: nextList.colors,
+            positions: nextList.positions,
+            hiddenColors: nextList.hiddenColors,
+            colorPercentages: nextList.colorPercentages
+          };
+          writeNamedLists(namedLists);
+          renderSavedListSelect(name);
+        },
+        "Saved list was preserved locally but needs review before sync."
+      );
     }
 
     function loadNamedList() {
@@ -1535,10 +1591,16 @@
         return;
       }
 
-      delete namedLists[name];
-      writeNamedLists(namedLists);
       listNameInput.value = "";
-      renderSavedListSelect();
+      persistWithMigration(
+        () => window.ColorGameStorage.removeNamedList(name).then(() => renderSavedListSelect()),
+        () => {
+          delete namedLists[name];
+          writeNamedLists(namedLists);
+          renderSavedListSelect();
+        },
+        "Saved list was preserved locally but needs review before sync."
+      );
       setStatus(`Deleted list: ${name}.`);
       playSound("remove");
     }
@@ -1571,12 +1633,18 @@
       colorInput.value = defaultColors.map((color) => `${color.name}: ${color.hex}`).join("\n");
       positionInput.value = defaultPositions.map((position) => position.name).join("\n");
       resizePositionInput();
-      localStorage.removeItem("colorPositionColors");
-      localStorage.removeItem("colorPositionPositions");
-      localStorage.removeItem(hiddenColorsStorageKey);
       currentColor = colors[4];
       currentPosition = positions[0];
       hiddenColorNames = new Set();
+      persistWithMigration(
+        () => window.ColorGameStorage.resetConfiguration(),
+        () => {
+          localStorage.removeItem("colorPositionColors");
+          localStorage.removeItem("colorPositionPositions");
+          localStorage.removeItem(hiddenColorsStorageKey);
+        },
+        "Default settings were preserved locally but need review before sync."
+      );
       renderPrompt();
       renderColorVisibility();
       setStatus("Default lists restored.");
@@ -1592,11 +1660,11 @@
     }
 
     function saveSoundPreference() {
-      try {
-        localStorage.setItem(soundStorageKey, soundEnabled ? "on" : "off");
-      } catch (error) {
-        setStatus("Sound setting not saved.");
-      }
+      persistWithMigration(
+        () => window.ColorGameStorage.saveSound(soundEnabled),
+        () => localStorage.setItem(soundStorageKey, soundEnabled ? "on" : "off"),
+        "Sound setting was preserved locally but needs review before sync."
+      );
     }
 
     function syncSoundButton() {
@@ -1620,7 +1688,11 @@
     }
 
     function savePlayers() {
-      localStorage.setItem(scoresStorageKey, JSON.stringify(players));
+      persistWithMigration(
+        () => window.ColorGameStorage.saveScoreboard(players),
+        () => localStorage.setItem(scoresStorageKey, JSON.stringify(players)),
+        "Scoreboard was preserved locally but needs review before sync."
+      );
     }
 
     function renderScores() {
@@ -1826,6 +1898,32 @@
     document.addEventListener("click", playButtonFallbackSound);
     window.addEventListener("resize", fitColorName);
     window.addEventListener("resize", resizePositionInput);
+    window.addEventListener(window.ColorGameStorage.changeEvent, (event) => {
+      const detail = event && event.detail;
+      if (!detail || !["remote", "migration"].includes(detail.source)) {
+        return;
+      }
+      try {
+        if (detail.collection === "configuration") {
+          loadLists();
+          currentColor = colors[0] || defaultColors[0];
+          currentPosition = positions[0] || defaultPositions[0];
+          renderColorVisibility();
+          renderPrompt();
+        } else if (detail.collection === "saved-lists") {
+          renderSavedListSelect(savedListSelect.value);
+        } else if (detail.collection === "scoreboard") {
+          players = loadPlayers();
+          renderScores();
+        } else if (detail.collection === "preferences") {
+          soundEnabled = loadSoundPreference();
+          syncSoundButton();
+        }
+        setStatus("Synchronized Color Game data applied.");
+      } catch (error) {
+        setStatus(error?.message || "A synchronized Color Game record needs review.");
+      }
+    });
 
     loadLists();
     renderColorVisibility();
@@ -1834,6 +1932,7 @@
     renderScores();
     syncSoundButton();
   </script>
+  <script src="/temporary-data-transfer.js" data-app-id="color-game"></script>
+  <script src="/private-semantic-sync.js" data-app-id="color-game"></script>
 </body>
 </html>
-

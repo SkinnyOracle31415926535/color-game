@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -15,10 +15,21 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Color Game",
   description: "A 90s internet-style gymnastics color game.",
+  manifest: "/site.webmanifest",
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: [{ url: "/favicon-32.png", sizes: "32x32", type: "image/png" }],
+    shortcut: "/favicon-32.png",
+    apple: [{ url: "/icon-180.png", sizes: "180x180", type: "image/png" }],
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Color Game",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0033ff",
 };
 
 export default function RootLayout({
