@@ -14,7 +14,8 @@ test("declares each staged Color Game install icon and web-app metadata", () => 
   ]) {
     assert.match(layout, new RegExp(`url: "${path.replaceAll(".", "\\.")}", sizes: "${size}"`));
   }
-  assert.match(layout, /shortcut: \[\{ url: "\/legacy\/favicon-32\.png", sizes: "32x32"/);
+  assert.match(layout, /shortcut: "\/legacy\/favicon-32\.png"/);
   assert.match(layout, /apple: \[\{ url: "\/legacy\/icon-180\.png", sizes: "180x180"/);
+  assert.match(layout, /other: \{[\s\S]*"apple-mobile-web-app-capable": "yes"/);
   assert.match(layout, /appleWebApp: \{[\s\S]*capable: true/);
 });
