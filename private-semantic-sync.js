@@ -1,9 +1,4 @@
-/*
- * Temporary owner-only semantic record sync for the private ChatGPT Site.
- * Browser-local transfer remains in temporary-data-transfer.js; this file
- * deliberately synchronizes app records such as classes and turns instead of
- * serializing localStorage keys.
- */
+/* Owner-only semantic record sync for the private ChatGPT Site. */
 (function privateSemanticSyncModule(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -18,8 +13,6 @@
   const METADATA_PREFIX = "__ryan_semantic_private_sync_";
   const MAX_VALUE_BYTES = 900 * 1024;
   const SEPARATOR = "\u001f";
-  const LEGACY_RECOVERY_COLLECTION = "legacy-browser-storage";
-  const LEGACY_RECOVERY_KIND = "ryan_app_sync_legacy_browser_storage_recovery";
 
   const isPlainObject = (value) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -62,24 +55,6 @@
       || value.schemaVersion !== VALUE_SCHEMA_VERSION
       || typeof value.deleted !== "boolean") return false;
     if (value.deleted) return value.value === null;
-    if (!safeJson(value.value)) return false;
-    try {
-      return byteLength(JSON.stringify(value.value)) <= MAX_VALUE_BYTES;
-    } catch (_error) {
-      return false;
-    }
-  };
-
-  // These are the exact wrappers written by the pre-semantic private-sync
-  // release. They are read only so an owner can export and recover them.
-  const validLegacyRawSyncValue = (value) => {
-    if (!exactKeys(value, ["present", "encoding", "value"])
-      || typeof value.present !== "boolean"
-      || (value.encoding !== "json" && value.encoding !== "text")) return false;
-    if (!value.present) return value.encoding === "text" && value.value === null;
-    if (value.encoding === "text") {
-      return typeof value.value === "string" && byteLength(value.value) <= MAX_VALUE_BYTES;
-    }
     if (!safeJson(value.value)) return false;
     try {
       return byteLength(JSON.stringify(value.value)) <= MAX_VALUE_BYTES;
@@ -166,15 +141,6 @@
       || !Number.isSafeInteger(value.revision) || value.revision <= 0
       || typeof value.updatedAt !== "string"
       || !validSemanticValue(value.value)) return null;
-    return value;
-  };
-
-  const normalizeLegacyRemoteRecord = (value) => {
-    if (!exactKeys(value, ["recordId", "revision", "updatedAt", "value"])
-      || !validRecordId(value.recordId)
-      || !Number.isSafeInteger(value.revision) || value.revision <= 0
-      || typeof value.updatedAt !== "string" || value.updatedAt.length > 80
-      || !validLegacyRawSyncValue(value.value)) return null;
     return value;
   };
 
@@ -525,53 +491,6 @@
       );
     };
 
-    const downloadLegacyRecovery = async () => {
-      emit("pending", "Reading retained legacy raw sync records…");
-      try {
-        const url = "/api/app-sync?appId=" + encodeURIComponent(appId)
-          + "&collection=" + encodeURIComponent(LEGACY_RECOVERY_COLLECTION);
-        const response = await windowRef.fetch(url, { cache: "no-store", credentials: "same-origin" });
-        const body = await responseJson(response);
-        if (!response.ok || !exactKeys(body, ["appId", "collection", "records", "version"])
-          || body.version !== 1 || body.appId !== appId
-          || body.collection !== LEGACY_RECOVERY_COLLECTION || !Array.isArray(body.records)) {
-          throw new Error((body && body.error) || "The retained legacy sync records are unavailable.");
-        }
-        const recordIds = new Set();
-        const records = body.records.map((item) => {
-          const record = normalizeLegacyRemoteRecord(item);
-          if (!record || recordIds.has(record.recordId)) {
-            throw new Error("A retained legacy sync record needs review before recovery.");
-          }
-          recordIds.add(record.recordId);
-          return record;
-        });
-        const bundle = {
-          kind: LEGACY_RECOVERY_KIND,
-          version: 1,
-          app_id: appId,
-          exported_at: new Date().toISOString(),
-          records,
-        };
-        downloadJson(windowRef, bundle, appId + "-legacy-private-sync-recovery.json");
-        emit(
-          "synced",
-          records.length
-            ? "Downloaded " + records.length + " retained legacy raw sync record"
-              + (records.length === 1 ? ". Import it with Settings & Data to recover this browser copy." : "s. Import it with Settings & Data to recover this browser copy.")
-            : "No retained legacy raw sync records were found.",
-        );
-        return bundle;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "The retained legacy sync records are unavailable.";
-        const offline = /offline|network|fetch|unavailable|sign in/i.test(message);
-        emit(offline ? "offline" : "error", offline
-          ? "Offline or not signed in. Retained legacy records were not changed."
-          : message);
-        return null;
-      }
-    };
-
     const resolveConflict = async (key, choice) => {
       const conflict = conflicts.get(key);
       if (!conflict || !["local", "remote"].includes(choice)) return;
@@ -630,7 +549,6 @@
       noteLocal,
       resolveConflict,
       downloadConflict,
-      downloadLegacyRecovery,
       get enabled() { return metadata.enabled; },
       get timer() { return timer; },
     };
@@ -818,7 +736,7 @@
     const client = createSemanticSync({ windowRef, appId: "scavenger-hunt", profiles });
     windowRef.addEventListener(store.changeEvent, (event) => {
       const detail = event && event.detail;
-      if (!detail || ["remote", "migration"].includes(detail.source)
+      if (!detail || detail.source === "remote"
         || typeof detail.oldRaw !== "string" && detail.oldRaw !== null
         || typeof detail.newRaw !== "string" && detail.newRaw !== null) return;
       void store.diffRecords(detail.oldRaw, detail.newRaw).then((changes) => {
@@ -836,6 +754,96 @@
     return client;
   }
 
+  const installPrivateSyncPanel = (windowRef, client) => {
+    const documentRef = windowRef.document;
+    if (!documentRef || documentRef.querySelector("[data-private-sync-panel]")) return;
+
+    const style = documentRef.createElement("style");
+    style.textContent = [
+      ".private-sync-panel{position:fixed;z-index:2147483000;right:10px;bottom:10px;width:min(330px,calc(100vw - 20px));overflow:hidden;border:4px solid #263a70;border-radius:9px;background:#fff8df;color:#263a70;box-shadow:0 4px 0 #263a70,0 8px 0 rgba(242,111,164,.55);font:900 12px/1.35 \"Courier New\",Courier,monospace}",
+      ".private-sync-panel__head{padding:8px 10px;border-bottom:4px solid #263a70;color:#fff8df;background:repeating-linear-gradient(90deg,#e94c46 0 18px,#f56ea6 18px 36px,#ffdf3f 36px 54px,#8d65c7 54px 72px);font:900 11px/1.15 \"Courier New\",Courier,monospace;letter-spacing:.06em;text-shadow:1px 1px 0 #263a70}",
+      ".private-sync-panel__body{padding:10px;display:grid;gap:8px;background:#fff8df}",
+      ".private-sync-panel p{margin:0;font-size:11px}",
+      ".private-sync-panel .button{width:100%;min-width:0}",
+      ".private-sync-panel .button:disabled{cursor:not-allowed;opacity:.55}",
+      ".private-sync-panel [data-sync-status]{min-height:1.35em;color:#263a70}",
+      ".private-sync-panel [data-sync-status][data-state=error],.private-sync-panel [data-sync-status][data-state=offline]{color:#e94c46}",
+      ".private-sync-panel__conflict{display:grid;grid-template-columns:1fr 1fr;gap:5px;border-top:2px dotted #8d65c7;padding-top:7px}",
+      ".private-sync-panel__conflict strong{grid-column:1/-1;overflow-wrap:anywhere;font-size:10px}",
+    ].join("");
+    documentRef.head.append(style);
+
+    const panel = documentRef.createElement("aside");
+    panel.className = "private-sync-panel card";
+    panel.dataset.privateSyncPanel = "true";
+    panel.setAttribute("aria-label", "Private device sync");
+    panel.innerHTML = [
+      '<div class="private-sync-panel__head panel-heading">PRIVATE DEVICE SYNC</div>',
+      '<div class="private-sync-panel__body">',
+      '<p>Keep this app’s saved records in sync on your approved private devices.</p>',
+      '<p data-sync-status aria-live="polite">Enable sync to connect this browser.</p>',
+      '<button class="button small" type="button" data-enable-sync>Enable private sync &amp; sync now</button>',
+      '<div data-sync-conflicts></div>',
+      '</div>',
+    ].join("");
+    documentRef.body.append(panel);
+
+    const status = panel.querySelector("[data-sync-status]");
+    const syncButton = panel.querySelector("[data-enable-sync]");
+    const syncConflicts = panel.querySelector("[data-sync-conflicts]");
+    const updateButton = () => {
+      syncButton.textContent = client.enabled ? "Sync this device now" : "Enable private sync & sync now";
+    };
+    const renderConflicts = (conflicts) => {
+      syncConflicts.replaceChildren();
+      conflicts.forEach((conflict) => {
+        const row = documentRef.createElement("div");
+        row.className = "private-sync-panel__conflict";
+        const label = documentRef.createElement("strong");
+        label.textContent = conflict.label || conflict.key;
+        const download = documentRef.createElement("button");
+        download.className = "button light small";
+        download.type = "button";
+        download.textContent = "Download both";
+        download.addEventListener("click", () => client.downloadConflict(conflict.key));
+        const keepLocal = documentRef.createElement("button");
+        keepLocal.className = "button pink small";
+        keepLocal.type = "button";
+        keepLocal.textContent = "Keep this device";
+        keepLocal.addEventListener("click", () => {
+          void client.resolveConflict(conflict.key, "local");
+        });
+        const useRemote = documentRef.createElement("button");
+        useRemote.className = "button small";
+        useRemote.type = "button";
+        useRemote.textContent = "Use synced record";
+        useRemote.addEventListener("click", () => {
+          void client.resolveConflict(conflict.key, "remote");
+        });
+        row.append(label, download, keepLocal, useRemote);
+        syncConflicts.append(row);
+      });
+    };
+
+    windowRef.addEventListener("ryan-private-semantic-sync-status", (event) => {
+      const detail = event && event.detail;
+      if (!detail || typeof detail.message !== "string") return;
+      status.textContent = detail.message;
+      status.dataset.state = typeof detail.state === "string" ? detail.state : "";
+      renderConflicts(Array.isArray(detail.conflicts) ? detail.conflicts : []);
+      updateButton();
+    });
+    syncButton.addEventListener("click", () => {
+      syncButton.disabled = true;
+      client.enable();
+      windowRef.setTimeout(() => {
+        syncButton.disabled = false;
+        updateButton();
+      }, 400);
+    });
+    updateButton();
+  };
+
   const install = (windowRef, appId) => {
     let client;
     try {
@@ -851,18 +859,7 @@
       });
       return null;
     }
-    windowRef.addEventListener("ryan-private-semantic-sync-request", () => client.enable());
-    windowRef.addEventListener("ryan-private-semantic-sync-resolve", (event) => {
-      const detail = event && event.detail;
-      if (detail && typeof detail.key === "string") void client.resolveConflict(detail.key, detail.choice);
-    });
-    windowRef.addEventListener("ryan-private-semantic-sync-download", (event) => {
-      const detail = event && event.detail;
-      if (detail && typeof detail.key === "string") client.downloadConflict(detail.key);
-    });
-    windowRef.addEventListener("ryan-private-semantic-sync-legacy-export", () => {
-      void client.downloadLegacyRecovery();
-    });
+    installPrivateSyncPanel(windowRef, client);
     client.start();
     return client;
   };
@@ -871,7 +868,6 @@
     VALUE_SCHEMA_VERSION,
     semanticValue,
     validSemanticValue,
-    validLegacyRawSyncValue,
     privateSite,
     createSemanticSync,
     install,

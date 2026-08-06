@@ -1,6 +1,6 @@
 import { integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-/** Temporary owner-scoped records; removed with the migration controls. */
+/** Owner-scoped semantic records used by private device sync. */
 export const appSyncRecords = sqliteTable("app_sync_records", {
   ownerId: text("owner_id").notNull(),
   appId: text("app_id").notNull(),

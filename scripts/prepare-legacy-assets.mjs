@@ -9,7 +9,6 @@ const assetsByApp = {
   "candyland-circle-quest": [
     "index.html",
     "candyland-storage.js",
-    "temporary-data-transfer.js",
     "site.webmanifest",
     "icon.png",
     "favicon-32.png",
@@ -20,7 +19,6 @@ const assetsByApp = {
   "color-game": [
     "index.html",
     "color-game-storage.js",
-    "temporary-data-transfer.js",
     "private-semantic-sync.js",
     "site.webmanifest",
     "icon.png",
@@ -32,7 +30,6 @@ const assetsByApp = {
   "scavenger-hunt-app": [
     "index.html",
     "scavenger-storage.js",
-    "temporary-data-transfer.js",
     "manifest.webmanifest",
     "assets",
   ],

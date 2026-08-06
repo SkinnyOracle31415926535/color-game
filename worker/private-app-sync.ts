@@ -26,24 +26,9 @@ type SyncValue = {
   value: unknown | null;
 };
 
-type LegacyRawSyncValue = {
-  present: boolean;
-  encoding: "json" | "text";
-  value: unknown;
-};
-
-type LegacyPublicRecord = {
-  recordId: string;
-  revision: number;
-  value: LegacyRawSyncValue;
-  updatedAt: string;
-};
-
 const MAX_BODY_BYTES = 1_200_000;
 const MAX_VALUE_BYTES = 900 * 1024;
 const MAX_DEPTH = 48;
-const LEGACY_BROWSER_STORAGE_COLLECTION = "browser-storage";
-const LEGACY_RECOVERY_COLLECTION = "legacy-browser-storage";
 
 const isObject = (value: unknown): value is Record<string, unknown> => (
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -99,42 +84,10 @@ function validateSyncValue(value: unknown): value is SyncValue {
   }
 }
 
-/** Old raw-key rows are retained read-only for migration recovery. */
-function validateLegacyRawSyncValue(value: unknown): value is LegacyRawSyncValue {
-  if (!exactKeys(value, ["present", "encoding", "value"])
-    || typeof value.present !== "boolean"
-    || (value.encoding !== "json" && value.encoding !== "text")) return false;
-  if (!value.present) return value.encoding === "text" && value.value === null;
-  if (value.encoding === "text") {
-    return typeof value.value === "string" && byteLength(value.value) <= MAX_VALUE_BYTES;
-  }
-  if (!safeJson(value.value)) return false;
-  try {
-    return byteLength(JSON.stringify(value.value)) <= MAX_VALUE_BYTES;
-  } catch {
-    return false;
-  }
-}
-
 function parseStoredRow(row: StoredRow): PublicRecord | null {
   try {
     const value = JSON.parse(row.payload_json) as unknown;
     if (!validateSyncValue(value)) return null;
-    return {
-      recordId: row.record_id,
-      revision: row.revision,
-      value,
-      updatedAt: row.updated_at,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function parseLegacyStoredRow(row: StoredRow): LegacyPublicRecord | null {
-  try {
-    const value = JSON.parse(row.payload_json) as unknown;
-    if (!validateLegacyRawSyncValue(value)) return null;
     return {
       recordId: row.record_id,
       revision: row.revision,
@@ -215,21 +168,18 @@ export function createPrivateAppSync(appId: string, allowedCollections: readonly
       return json({ error: "This sync request targets the wrong app." }, 400);
     }
     const collection = url.searchParams.get("collection");
-    const recovery = collection === LEGACY_RECOVERY_COLLECTION;
-    if (!recovery && !isAllowedCollection(collection)) {
+    if (!isAllowedCollection(collection)) {
       return json({ error: "This sync request targets an unsupported record collection." }, 400);
     }
     const result = await database.prepare(`SELECT record_id, revision, payload_json, updated_at
       FROM app_sync_records
       WHERE owner_id = ? AND app_id = ? AND collection_name = ?
       ORDER BY record_id COLLATE NOCASE`)
-      .bind(owner, appId, recovery ? LEGACY_BROWSER_STORAGE_COLLECTION : collection)
+      .bind(owner, appId, collection)
       .all<StoredRow>();
-    const records = result.results.map(recovery ? parseLegacyStoredRow : parseStoredRow);
+    const records = result.results.map(parseStoredRow);
     if (records.some((record) => record === null)) {
-      return json({ error: recovery
-        ? "A retained legacy sync record needs review."
-        : "A stored sync record needs review." }, 500);
+      return json({ error: "A stored sync record needs review." }, 500);
     }
     return json({ version: 1, appId, collection, records });
   };
