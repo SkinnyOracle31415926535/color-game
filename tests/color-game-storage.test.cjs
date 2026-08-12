@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { webcrypto } = require('node:crypto');
+const { TextEncoder } = require('node:util');
 
 const storageSource = fs.readFileSync(
   path.join(__dirname, '..', 'color-game-storage.js'),
@@ -31,10 +33,28 @@ class FakeLocalStorage {
   }
 }
 
+class LockManager {
+  constructor() { this.tail = Promise.resolve(); }
+  request(_name, _options, task) {
+    const result = this.tail.then(task);
+    this.tail = result.catch(() => {});
+    return result;
+  }
+}
+
 function loadStorage(initial = {}) {
   const localStorage = new FakeLocalStorage(initial);
-  const window = { localStorage };
-  const context = vm.createContext({ window });
+  const window = {
+    localStorage,
+    crypto: webcrypto,
+    navigator: { locks: new LockManager() },
+    dispatchEvent() { return true; },
+  };
+  const context = vm.createContext({
+    window,
+    TextEncoder,
+    CustomEvent: class CustomEvent {},
+  });
   vm.runInContext(storageSource, context, { filename: 'color-game-storage.js' });
   const realm = (value) => {
     context.__json = JSON.stringify(value);
@@ -115,12 +135,12 @@ test('preserves malformed local bytes instead of overwriting them', async () => 
   assert.deepEqual(environment.localStorage.snapshot(), before);
 });
 
-test('does not expose retired remote-sync adapter APIs', () => {
+test('exposes validated automatic-sync adapters without changing local storage ownership', () => {
   const environment = loadStorage();
-  for (const key of [
-    'appId', 'changeEvent', 'aggregateLock', 'makeAdapters', 'attachHandles',
-    'listRecordId', 'setEditorState',
-  ]) {
-    assert.equal(environment.api[key], undefined, `${key} should not ship`);
-  }
+  assert.equal(environment.api.appId, 'color-game');
+  assert.equal(typeof environment.api.makeAdapters, 'function');
+  assert.equal(typeof environment.api.attachHandles, 'function');
+  assert.equal(typeof environment.api.listRecordId, 'function');
+  assert.equal(typeof environment.api.setEditorState, 'function');
+  assert.equal(environment.api.makeAdapters().configuration.collection, 'configuration');
 });

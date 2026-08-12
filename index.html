@@ -1425,7 +1425,7 @@
       });
     }
 
-    function configurationStorageValue() {
+    function configurationSyncValue() {
       return {
         version: persistentStore.schemaVersion,
         colorsText: colors.map((color) => `${color.name}: ${color.hex}`).join("\n"),
@@ -1437,7 +1437,7 @@
 
     function persistConfiguration() {
       return reportPersistence(
-        persistentStore.saveConfiguration(configurationStorageValue()),
+        persistentStore.saveConfiguration(configurationSyncValue()),
         "Color Game settings"
       );
     }
@@ -1764,6 +1764,7 @@
       currentPosition = positions[0];
       const saved = await persistConfiguration();
       if (!saved) return false;
+      persistentStore.setEditorState("configuration", { dirty: false });
       renderColorVisibility();
       renderPrompt();
       setStatus(message);
@@ -1893,6 +1894,7 @@
         "Default lists"
       );
       if (!reset) return;
+      persistentStore.setEditorState("configuration", { dirty: false });
       currentColor = colors[4];
       currentPosition = positions[0];
       hiddenColorNames = new Set();
@@ -2153,8 +2155,33 @@
       listNameInput.value = savedListSelect.value;
       playSound("click");
     });
+    positionInput.addEventListener("focus", () => {
+      persistentStore.setEditorState("configuration", { active: true });
+    });
+    positionInput.addEventListener("blur", () => {
+      persistentStore.setEditorState("configuration", { active: false });
+    });
     positionInput.addEventListener("input", () => {
+      persistentStore.setEditorState("configuration", { dirty: true });
       window.requestAnimationFrame(resizePositionInput);
+    });
+    [listNameInput, savedListSelect].forEach((editor) => {
+      editor.addEventListener("focus", () => {
+        persistentStore.setEditorState("saved-lists", { active: true });
+      });
+      editor.addEventListener("blur", () => {
+        persistentStore.setEditorState("saved-lists", { active: false });
+      });
+    });
+    scoreList.addEventListener("focusin", () => {
+      persistentStore.setEditorState("scoreboard", { active: true });
+    });
+    scoreList.addEventListener("focusout", () => {
+      Promise.resolve().then(() => {
+        persistentStore.setEditorState("scoreboard", {
+          active: scoreList.contains(document.activeElement)
+        });
+      });
     });
     difficulty.addEventListener("change", rollPosition);
     document.addEventListener("pointerdown", unlockAudio, { capture: true, passive: true });
@@ -2162,6 +2189,28 @@
     document.addEventListener("click", playButtonFallbackSound);
     window.addEventListener("resize", fitColorName);
     window.addEventListener("resize", resizePositionInput);
+    window.addEventListener(persistentStore.changeEvent, (event) => {
+      const detail = event.detail;
+      if (!detail || detail.source === "local") return;
+      if (detail.collection === "configuration") {
+        loadLists();
+        currentColor = colors[0];
+        currentPosition = positions[0];
+        persistentStore.setEditorState("configuration", { dirty: false });
+        renderColorVisibility();
+        renderColorChanceControls();
+        renderPrompt();
+      } else if (detail.collection === "saved-lists") {
+        renderSavedListSelect();
+      } else if (detail.collection === "scoreboard") {
+        players = loadPlayers();
+        renderScores();
+      } else if (detail.collection === "preferences") {
+        soundEnabled = loadSoundPreference();
+        syncSoundButton();
+      }
+    });
+
     loadLists();
     renderColorVisibility();
     renderSavedListSelect();
@@ -2174,5 +2223,6 @@
       );
     }
   </script>
+  <script src="automatic-app-sync.js" data-app-id="color-game"></script>
 </body>
 </html>
